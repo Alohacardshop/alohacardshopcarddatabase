@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import { Loader2, AlertCircle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import {
   Table,
@@ -15,22 +15,14 @@ import {
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!
-);
-
 interface SyncJob {
   id: string;
   type: string;
   game_slug: string;
   set_code: string;
   status: string;
-  progress: {
-    current: number;
-    total: number;
-    rate?: number;
-  };
+  progress: number;
+  total: number;
   results: any;
   error_details: any;
   started_at: string;
@@ -130,9 +122,9 @@ export function JobMonitor() {
     return `${diffSec}s`;
   };
 
-  const getProgressPercentage = (progress: { current: number; total: number }) => {
-    if (!progress.total || progress.total === 0) return 0;
-    return Math.round((progress.current / progress.total) * 100);
+  const getProgressPercentage = (current: number, total: number) => {
+    if (!total || total === 0) return 0;
+    return Math.round((current / total) * 100);
   };
 
   if (loading) {
@@ -215,22 +207,19 @@ export function JobMonitor() {
                       {getStatusBadge(job.status)}
                     </TableCell>
                     <TableCell>
-                      {job.progress && job.progress.total > 0 ? (
+                      {job.progress && job.total > 0 ? (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <Progress 
-                              value={getProgressPercentage(job.progress)} 
+                              value={getProgressPercentage(job.progress, job.total)} 
                               className="w-16" 
                             />
                             <span className="text-sm text-muted-foreground">
-                              {job.progress.current}/{job.progress.total}
+                              {job.progress}/{job.total}
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {getProgressPercentage(job.progress)}%
-                            {job.progress.rate && (
-                              <span className="ml-1">({job.progress.rate}/min)</span>
-                            )}
+                            {getProgressPercentage(job.progress, job.total)}%
                           </div>
                         </div>
                       ) : (

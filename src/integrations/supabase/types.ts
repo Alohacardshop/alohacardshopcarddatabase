@@ -237,6 +237,21 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          role: string
+          user_id: string
+        }
+        Insert: {
+          role: string
+          user_id: string
+        }
+        Update: {
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       variants: {
         Row: {
           card_id: string
@@ -335,6 +350,10 @@ export type Database = {
       }
     }
     Functions: {
+      grant_role_by_email: {
+        Args: { p_email: string; p_role: string }
+        Returns: undefined
+      }
       gtrgm_compress: {
         Args: { "": unknown }
         Returns: unknown
@@ -354,6 +373,14 @@ export type Database = {
       gtrgm_out: {
         Args: { "": unknown }
         Returns: unknown
+      }
+      has_admin_users: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      has_role: {
+        Args: { r: string; uid: string }
+        Returns: boolean
       }
       search_cards: {
         Args: {

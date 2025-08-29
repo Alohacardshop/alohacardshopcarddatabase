@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import { Loader2, RefreshCw, Database, Calendar, Check } from 'lucide-react';
 import {
   Table,
@@ -13,11 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!
-);
 
 interface Game {
   id: string;
@@ -64,10 +59,28 @@ export function GamesManager() {
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('sync-games', {
-        method: 'POST'
+        body: {}
       });
 
-      if (error) throw error;
+      if (error) {
+        // Handle specific error cases with better user feedback
+        if (error.message.includes('403') || error.message.includes('unauthorized')) {
+          toast({
+            title: 'Not authorized',
+            description: 'You need admin privileges to perform this action.',
+            variant: 'destructive'
+          });
+        } else if (error.message.includes('500')) {
+          toast({
+            title: 'Server error',
+            description: 'Likely missing SUPABASE_SERVICE_ROLE_KEY or function env variable.',
+            variant: 'destructive'
+          });
+        } else {
+          throw error;
+        }
+        return;
+      }
 
       toast({
         title: 'Success',

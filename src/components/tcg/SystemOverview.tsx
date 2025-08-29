@@ -3,13 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CheckCircle, XCircle, Database, Zap, Clock, TrendingUp } from 'lucide-react';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!
-);
 
 interface SystemStats {
   totalGames: number;
@@ -42,14 +37,18 @@ export function SystemOverview() {
 
   const fetchSystemStats = async () => {
     try {
-      // Try health check first for real-time status
-      const healthResponse = await fetch('/api/health-check')
-        .catch(() => null)
-      
-      let apiStatus: 'healthy' | 'error' | 'checking' = 'checking'
-      if (healthResponse) {
-        const healthData = await healthResponse.json()
-        apiStatus = healthData.status === 'healthy' ? 'healthy' : 'error'
+      // Check API health via edge function
+      let apiStatus: 'healthy' | 'error' | 'checking' = 'checking';
+      try {
+        const { data, error } = await supabase.functions.invoke('health-check');
+        if (!error && data?.status === 'healthy') {
+          apiStatus = 'healthy';
+        } else {
+          apiStatus = 'error';
+        }
+      } catch (error) {
+        console.error('Health check failed:', error);
+        apiStatus = 'error';
       }
 
       // Use the database_stats view for better performance
