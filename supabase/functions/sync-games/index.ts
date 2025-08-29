@@ -58,7 +58,9 @@ serve(async (req) => {
       // Update progress
       await supabaseClient
         .from('sync_jobs')
-        .update({ total: games.length, progress: 0 })
+        .update({ 
+          progress: { current: 0, total: games.length, rate: 0 }
+        })
         .eq('id', job.id)
 
       // Sync each game
@@ -81,11 +83,15 @@ serve(async (req) => {
             syncedCount++
           }
 
-          // Update progress
-          await supabaseClient
-            .from('sync_jobs')
-            .update({ progress: syncedCount })
-            .eq('id', job.id)
+          // Update progress every 5 games
+          if (syncedCount % 5 === 0) {
+            await supabaseClient
+              .from('sync_jobs')
+              .update({ 
+                progress: { current: syncedCount, total: games.length, rate: 0 }
+              })
+              .eq('id', job.id)
+          }
 
         } catch (error) {
           const errorMsg = `Game ${game.name}: ${error.message}`
@@ -106,9 +112,9 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length === games.length ? 'failed' : 'completed',
-          progress: syncedCount,
+          progress: { current: syncedCount, total: games.length, rate: 0 },
           results,
-          error_details: errors.length > 0 ? errors.join('; ') : null,
+          error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)
@@ -133,7 +139,7 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: 'failed',
-          error_details: error.message,
+          error_details: { message: error.message, stack: error.stack },
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)

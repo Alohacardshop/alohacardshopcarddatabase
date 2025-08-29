@@ -89,7 +89,9 @@ serve(async (req) => {
       // Update progress
       await supabaseClient
         .from('sync_jobs')
-        .update({ total: allSets.length, progress: 0 })
+        .update({ 
+          progress: { current: 0, total: allSets.length, rate: 0 }
+        })
         .eq('id', job.id)
 
       // Sync each set
@@ -119,7 +121,9 @@ serve(async (req) => {
           if (syncedCount % 10 === 0) {
             await supabaseClient
               .from('sync_jobs')
-              .update({ progress: syncedCount })
+              .update({ 
+                progress: { current: syncedCount, total: allSets.length, rate: 0 }
+              })
               .eq('id', job.id)
           }
 
@@ -142,9 +146,9 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length === allSets.length ? 'failed' : 'completed',
-          progress: syncedCount,
+          progress: { current: syncedCount, total: allSets.length, rate: 0 },
           results,
-          error_details: errors.length > 0 ? errors.join('; ') : null,
+          error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)
@@ -169,7 +173,7 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: 'failed',
-          error_details: error.message,
+          error_details: { message: error.message, stack: error.stack },
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)

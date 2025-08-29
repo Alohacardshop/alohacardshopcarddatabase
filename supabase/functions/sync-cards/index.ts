@@ -112,8 +112,11 @@ serve(async (req) => {
         await supabaseClient
           .from('sync_jobs')
           .update({ 
-            total: response.pagination?.total || allCards.length,
-            progress: allCards.length 
+            progress: { 
+              current: allCards.length, 
+              total: response.pagination?.total || allCards.length,
+              rate: 0 
+            }
           })
           .eq('id', job.id)
       }
@@ -192,7 +195,13 @@ serve(async (req) => {
         // Update progress after each batch
         await supabaseClient
           .from('sync_jobs')
-          .update({ progress: Math.min(i + batchSize, allCards.length) })
+          .update({ 
+            progress: { 
+              current: Math.min(i + batchSize, allCards.length),
+              total: allCards.length,
+              rate: 0
+            }
+          })
           .eq('id', job.id)
       }
 
@@ -219,9 +228,9 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length > allCards.length / 2 ? 'failed' : 'completed',
-          progress: allCards.length,
+          progress: { current: allCards.length, total: allCards.length, rate: 0 },
           results,
-          error_details: errors.length > 0 ? errors.join('; ') : null,
+          error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)
@@ -247,7 +256,7 @@ serve(async (req) => {
           .from('sync_jobs')
           .update({
             status: 'failed',
-            error_details: error.message,
+            error_details: { message: error.message, stack: error.stack },
             completed_at: new Date().toISOString()
           })
           .eq('id', job.id),

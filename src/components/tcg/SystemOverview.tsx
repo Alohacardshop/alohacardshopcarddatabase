@@ -40,31 +40,60 @@ export function SystemOverview() {
 
   const fetchSystemStats = async () => {
     try {
-      const [
-        gamesResult,
-        setsResult,
-        cardsResult,
-        variantsResult,
-        jobsResult
-      ] = await Promise.all([
-        supabase.from('games').select('id', { count: 'exact', head: true }),
-        supabase.from('sets').select('id', { count: 'exact', head: true }),
-        supabase.from('cards').select('id', { count: 'exact', head: true }),
-        supabase.from('variants').select('id', { count: 'exact', head: true }),
-        supabase
-          .from('sync_jobs')
-          .select('id', { count: 'exact', head: true })
-          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      ]);
+      // Try health check first for real-time status
+      const healthResponse = await fetch('/api/health-check')
+        .catch(() => null)
+      
+      let apiStatus: 'healthy' | 'error' | 'checking' = 'checking'
+      if (healthResponse) {
+        const healthData = await healthResponse.json()
+        apiStatus = healthData.status === 'healthy' ? 'healthy' : 'error'
+      }
 
-      setStats({
-        totalGames: gamesResult.count || 0,
-        totalSets: setsResult.count || 0,
-        totalCards: cardsResult.count || 0,
-        totalVariants: variantsResult.count || 0,
-        recentJobs: jobsResult.count || 0,
-        apiStatus: 'healthy' // We'll implement health check later
-      });
+      // Use the database_stats view for better performance
+      const { data: statsData, error: statsError } = await supabase
+        .from('database_stats')
+        .select('*')
+        .single();
+
+      if (statsError) {
+        // Fallback to individual queries if view doesn't exist
+        const [
+          gamesResult,
+          setsResult,
+          cardsResult,
+          variantsResult,
+          jobsResult
+        ] = await Promise.all([
+          supabase.from('games').select('id', { count: 'exact', head: true }),
+          supabase.from('sets').select('id', { count: 'exact', head: true }),
+          supabase.from('cards').select('id', { count: 'exact', head: true }),
+          supabase.from('variants').select('id', { count: 'exact', head: true }),
+          supabase
+            .from('sync_jobs')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        ]);
+
+        setStats({
+          totalGames: gamesResult.count || 0,
+          totalSets: setsResult.count || 0,
+          totalCards: cardsResult.count || 0,
+          totalVariants: variantsResult.count || 0,
+          recentJobs: jobsResult.count || 0,
+          apiStatus
+        });
+      } else {
+        // Use view data
+        setStats({
+          totalGames: statsData.total_games || 0,
+          totalSets: statsData.total_sets || 0,
+          totalCards: statsData.total_cards || 0,
+          totalVariants: statsData.total_variants || 0,
+          recentJobs: statsData.active_jobs || 0,
+          apiStatus
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch system stats:', error);
       setStats(prev => ({ ...prev, apiStatus: 'error' }));

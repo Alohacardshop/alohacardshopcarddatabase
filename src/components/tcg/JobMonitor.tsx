@@ -26,10 +26,13 @@ interface SyncJob {
   game_slug: string;
   set_code: string;
   status: string;
-  progress: number;
-  total: number;
+  progress: {
+    current: number;
+    total: number;
+    rate?: number;
+  };
   results: any;
-  error_details: string;
+  error_details: any;
   started_at: string;
   completed_at: string;
   created_at: string;
@@ -127,9 +130,9 @@ export function JobMonitor() {
     return `${diffSec}s`;
   };
 
-  const getProgressPercentage = (progress: number, total: number) => {
-    if (!total || total === 0) return 0;
-    return Math.round((progress / total) * 100);
+  const getProgressPercentage = (progress: { current: number; total: number }) => {
+    if (!progress.total || progress.total === 0) return 0;
+    return Math.round((progress.current / progress.total) * 100);
   };
 
   if (loading) {
@@ -212,19 +215,22 @@ export function JobMonitor() {
                       {getStatusBadge(job.status)}
                     </TableCell>
                     <TableCell>
-                      {job.total > 0 ? (
+                      {job.progress && job.progress.total > 0 ? (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <Progress 
-                              value={getProgressPercentage(job.progress, job.total)} 
+                              value={getProgressPercentage(job.progress)} 
                               className="w-16" 
                             />
                             <span className="text-sm text-muted-foreground">
-                              {job.progress}/{job.total}
+                              {job.progress.current}/{job.progress.total}
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {getProgressPercentage(job.progress, job.total)}%
+                            {getProgressPercentage(job.progress)}%
+                            {job.progress.rate && (
+                              <span className="ml-1">({job.progress.rate}/min)</span>
+                            )}
                           </div>
                         </div>
                       ) : (
