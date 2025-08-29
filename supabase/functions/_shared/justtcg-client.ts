@@ -218,6 +218,17 @@ class JustTCGClient {
     return response.cards;
   }
 
+  // Health check - simple API connectivity test
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.makeRequest<{ games: JustTCGGame[] }>('/games');
+      return true;
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return false;
+    }
+  }
+
   // Get current rate limit status
   getRateLimitStatus() {
     const now = Date.now();
