@@ -14,15 +14,19 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    // Create admin client for privileged database operations (bypasses RLS)
+    const supabaseAdminClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+
+    // Verify required environment variables
+    if (!Deno.env.get('SUPABASE_URL')) {
+      throw new Error('SUPABASE_URL environment variable is required')
+    }
+    if (!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required')
+    }
 
     const justTCGApiKey = Deno.env.get('JUSTTCG_API_KEY')
     if (!justTCGApiKey) {
@@ -31,8 +35,8 @@ serve(async (req) => {
 
     const client = new JustTCGClient(justTCGApiKey)
 
-    // Create sync job
-    const { data: job, error: jobError } = await supabaseClient
+    // Create sync job using admin client to bypass RLS
+    const { data: job, error: jobError } = await supabaseAdminClient
       .from('sync_jobs')
       .insert({
         type: 'games',
@@ -43,7 +47,7 @@ serve(async (req) => {
       .single()
 
     if (jobError) {
-      throw new Error(`Failed to create sync job: ${jobError.message}`)
+      throw new Error(`sync_jobs insert failed: ${jobError.message}`)
     }
 
     console.log(`Starting games sync, job ID: ${job.id}`)
@@ -57,13 +61,17 @@ serve(async (req) => {
       const errors: string[] = []
 
       // Update progress - using integer columns as per schema
-      await supabaseClient
+      const { error: progressError } = await supabaseAdminClient
         .from('sync_jobs')
         .update({ 
           progress: 0,
           total: games.length
         })
         .eq('id', job.id)
+
+      if (progressError) {
+        throw new Error(`sync_jobs progress update failed: ${progressError.message}`)
+      }
 
       // Sync each game with optimized data processing
       for (const game of games) {
@@ -75,30 +83,34 @@ serve(async (req) => {
             is_active: true
           };
 
-          const { error } = await supabaseClient
+          const { error } = await supabaseAdminClient
             .from('games')
             .upsert(processedGame, {
               onConflict: 'slug'
             });
 
           if (error) {
-            errors.push(`Game ${game.name}: ${error.message}`);
+            errors.push(`games upsert failed for ${game.name}: ${error.message}`);
           } else {
             syncedCount++;
           }
 
           // Update progress every 5 games
           if (syncedCount % 5 === 0) {
-            await supabaseClient
+            const { error: updateError } = await supabaseAdminClient
               .from('sync_jobs')
               .update({ 
                 progress: syncedCount
               })
               .eq('id', job.id);
+            
+            if (updateError) {
+              console.error(`sync_jobs progress update failed: ${updateError.message}`);
+            }
           }
 
         } catch (error) {
-          const errorMsg = `Game ${game.name}: ${error.message}`;
+          const errorMsg = `Game processing failed for ${game.name}: ${error.message}`;
           errors.push(errorMsg);
           console.error(errorMsg);
         }
@@ -112,7 +124,7 @@ serve(async (req) => {
         errors: errors.slice(0, 10) // Limit error details
       }
 
-      await supabaseClient
+      const { error: completionError } = await supabaseAdminClient
         .from('sync_jobs')
         .update({
           status: errors.length === games.length ? 'failed' : 'completed',
@@ -122,6 +134,10 @@ serve(async (req) => {
           completed_at: new Date().toISOString()
         })
         .eq('id', job.id)
+
+      if (completionError) {
+        console.error(`sync_jobs completion update failed: ${completionError.message}`)
+      }
 
       console.log(`Games sync completed: ${syncedCount}/${games.length} synced`)
 
@@ -138,15 +154,21 @@ serve(async (req) => {
       )
 
     } catch (error) {
-      // Mark job as failed
-      await supabaseClient
-        .from('sync_jobs')
-        .update({
-          status: 'failed',
-          error_details: { message: error.message, stack: error.stack },
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', job.id)
+      // Mark job as failed using admin client
+      if (job?.id) {
+        const { error: failureError } = await supabaseAdminClient
+          .from('sync_jobs')
+          .update({
+            status: 'failed',
+            error_details: { message: error.message, stack: error.stack },
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', job.id)
+
+        if (failureError) {
+          console.error(`sync_jobs failure update failed: ${failureError.message}`)
+        }
+      }
 
       throw error
     }

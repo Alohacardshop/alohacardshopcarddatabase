@@ -60,6 +60,16 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Backend & Edge Functions
+
+This project uses Supabase for backend functionality, including:
+
+- **Database**: PostgreSQL with Row Level Security (RLS)
+- **Edge Functions**: Deployed automatically for API integrations
+- **Authentication**: User management and role-based access
+
+**Important**: The `sync-games` edge function uses Supabase's service role for privileged database writes, bypassing RLS policies to manage sync jobs and game data. This function does not forward user JWTs for database operations.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/7058a8c5-fbcc-4f3d-ba5f-44aa8cb72606) and click on Share -> Publish.
