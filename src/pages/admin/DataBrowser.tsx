@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '@/lib/supabaseClient';
+import MissingSupabaseConfig from '@/components/MissingSupabaseConfig';
 import {
   Search,
   Database,
@@ -34,10 +35,18 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!
-);
+// Get Supabase client with env validation
+let supabase;
+try {
+  supabase = getSupabase();
+} catch (e) {
+  if ((e as Error).message === 'MISSING_SUPABASE_ENV') {
+    // Component will render guard instead of crashing
+    supabase = null;
+  } else {
+    throw e;
+  }
+}
 
 interface Game {
   id: string;
@@ -66,6 +75,11 @@ interface Variant {
 }
 
 export function DataBrowser() {
+  // Return config guard if Supabase is not configured
+  if (!supabase) {
+    return <MissingSupabaseConfig />;
+  }
+
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'games' | 'cards'>('games');
   const [loading, setLoading] = useState(false);
