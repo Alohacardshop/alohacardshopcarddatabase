@@ -5,6 +5,7 @@ import { JustTCGClient } from '../_shared/justtcg-client.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 serve(async (req) => {
@@ -55,11 +56,12 @@ serve(async (req) => {
       let syncedCount = 0
       const errors: string[] = []
 
-      // Update progress
+      // Update progress - using integer columns as per schema
       await supabaseClient
         .from('sync_jobs')
         .update({ 
-          progress: { current: 0, total: games.length, rate: 0 }
+          progress: 0,
+          total: games.length
         })
         .eq('id', job.id)
 
@@ -85,15 +87,12 @@ serve(async (req) => {
             syncedCount++;
           }
 
-          // Update progress every 5 games with rate calculation
+          // Update progress every 5 games
           if (syncedCount % 5 === 0) {
-            const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000;
-            const rate = Math.round(syncedCount / Math.max(elapsedSeconds, 1));
-            
             await supabaseClient
               .from('sync_jobs')
               .update({ 
-                progress: { current: syncedCount, total: games.length, rate }
+                progress: syncedCount
               })
               .eq('id', job.id);
           }
@@ -117,7 +116,7 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length === games.length ? 'failed' : 'completed',
-          progress: { current: syncedCount, total: games.length, rate: 0 },
+          progress: syncedCount,
           results,
           error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()
