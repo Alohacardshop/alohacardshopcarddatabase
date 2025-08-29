@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { TableName, ViewName, isRelation, TABLES, VIEWS } from '@/types/supabase-relations';
 import {
   Database,
   CheckCircle,
@@ -78,7 +79,7 @@ export function DatabaseManagement() {
       const connected = !connectionError;
 
       // Check if core tables exist
-      const tables = ['games', 'sets', 'cards', 'variants', 'sync_jobs'];
+      const tables: TableName[] = ['games', 'sets', 'cards', 'variants', 'sync_jobs'];
       let tablesExist = true;
       
       for (const table of tables) {
