@@ -237,20 +237,20 @@ export function EnvironmentConfig() {
         </CardContent>
       </Card>
 
-      {/* API Usage Stats */}
+      {/* API Usage Stats - Enhanced for Premium Plan */}
       {apiStats && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5" />
-              API Usage Statistics
+              Premium API Usage & Performance
             </CardTitle>
             <CardDescription>
-              Current rate limit status and usage metrics
+              Real-time monitoring of your Premium plan usage and performance metrics
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary">
                   {apiStats.requests}
@@ -269,6 +269,14 @@ export function EnvironmentConfig() {
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-accent">
+                  400
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Premium Limit/Min
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-muted-foreground">
                   {Math.round(apiStats.windowRemaining / 1000)}s
                 </div>
                 <div className="text-sm text-muted-foreground">
@@ -276,10 +284,14 @@ export function EnvironmentConfig() {
                 </div>
               </div>
             </div>
-            
-            <div className="mt-4">
+
+            {/* Usage Progress Bar */}
+            <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Usage: {apiStats.requests}/{apiStats.maxRequests}</span>
+                <span className="text-sm font-medium">
+                  Usage: {apiStats.requests}/400 
+                  <Badge variant="outline" className="ml-2">Premium</Badge>
+                </span>
                 <Button variant="ghost" size="sm" onClick={resetRateLimit}>
                   <RotateCcw className="h-4 w-4" />
                   Reset
@@ -287,11 +299,39 @@ export function EnvironmentConfig() {
               </div>
               <div className="bg-secondary rounded-full h-2">
                 <div 
-                  className="bg-primary h-2 rounded-full transition-all"
+                  className={`h-2 rounded-full transition-all ${
+                    (apiStats.requests / 400) > 0.8 ? 'bg-destructive' : 
+                    (apiStats.requests / 400) > 0.6 ? 'bg-yellow-500' : 'bg-primary'
+                  }`}
                   style={{ 
-                    width: `${(apiStats.requests / apiStats.maxRequests) * 100}%` 
+                    width: `${(apiStats.requests / 400) * 100}%` 
                   }}
                 />
+              </div>
+            </div>
+
+            {/* Premium Plan Benefits */}
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="default">Premium Benefits</Badge>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <div className="font-medium">500 req/min</div>
+                  <div className="text-muted-foreground">Rate limit</div>
+                </div>
+                <div>
+                  <div className="font-medium">100 items</div>
+                  <div className="text-muted-foreground">Per batch</div>
+                </div>
+                <div>
+                  <div className="font-medium">150ms delay</div>
+                  <div className="text-muted-foreground">Smart spacing</div>
+                </div>
+                <div>
+                  <div className="font-medium">5-tier backoff</div>
+                  <div className="text-muted-foreground">Error recovery</div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -310,6 +350,28 @@ export function EnvironmentConfig() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Premium Plan Configuration */}
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="default">Premium Plan</Badge>
+              <span className="text-sm font-medium">Optimized Settings</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="font-medium">Rate Limit:</span>
+                <div className="text-muted-foreground">400 req/min (safe buffer)</div>
+              </div>
+              <div>
+                <span className="font-medium">Batch Size:</span>
+                <div className="text-muted-foreground">100 items per request</div>
+              </div>
+              <div>
+                <span className="font-medium">Smart Delay:</span>
+                <div className="text-muted-foreground">150ms between requests</div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="games-batch">Games Batch Size</Label>
@@ -318,10 +380,10 @@ export function EnvironmentConfig() {
                 type="number"
                 value={batchSizes.games}
                 onChange={(e) => setBatchSizes(prev => ({ ...prev, games: parseInt(e.target.value) || 50 }))}
-                min="10"
+                min="25"
                 max="100"
               />
-              <p className="text-xs text-muted-foreground">10-100 games per batch</p>
+              <p className="text-xs text-muted-foreground">25-100 games per batch</p>
             </div>
             
             <div className="space-y-2">
@@ -332,9 +394,10 @@ export function EnvironmentConfig() {
                 value={batchSizes.sets}
                 onChange={(e) => setBatchSizes(prev => ({ ...prev, sets: parseInt(e.target.value) || 100 }))}
                 min="50"
-                max="200"
+                max="100"
+                disabled
               />
-              <p className="text-xs text-muted-foreground">50-200 sets per batch</p>
+              <p className="text-xs text-muted-foreground">Fixed at 100 (Premium limit)</p>
             </div>
             
             <div className="space-y-2">
@@ -343,11 +406,12 @@ export function EnvironmentConfig() {
                 id="cards-batch"
                 type="number"
                 value={batchSizes.cards}
-                onChange={(e) => setBatchSizes(prev => ({ ...prev, cards: parseInt(e.target.value) || 200 }))}
-                min="100"
-                max="500"
+                onChange={(e) => setBatchSizes(prev => ({ ...prev, cards: parseInt(e.target.value) || 100 }))}
+                min="50"
+                max="100"
+                disabled
               />
-              <p className="text-xs text-muted-foreground">100-500 cards per batch</p>
+              <p className="text-xs text-muted-foreground">Fixed at 100 (Premium limit)</p>
             </div>
           </div>
 

@@ -67,18 +67,31 @@ serve(async (req) => {
 
     try {
       let allSets: any[] = []
-      let page = 1
+      let offset = 0
       let hasMore = true
+      const batchSize = 100
 
-      // Fetch all sets with pagination
+      // Fetch all sets with offset-based pagination (Premium plan optimized)
       while (hasMore) {
-        const response = await client.getSets(gameSlug, page, 100)
+        const response = await client.getSets(gameSlug, offset, batchSize)
         allSets = allSets.concat(response.sets)
         
-        hasMore = response.pagination?.has_more || false
-        page++
+        hasMore = response.pagination?.has_more || response.sets.length === batchSize
+        offset += batchSize
         
-        console.log(`Fetched page ${page - 1}, total sets: ${allSets.length}`)
+        console.log(`Fetched offset ${offset - batchSize}-${offset}, total sets: ${allSets.length}`)
+
+        // Update progress during fetch
+        await supabaseClient
+          .from('sync_jobs')
+          .update({ 
+            progress: { 
+              current: allSets.length, 
+              total: response.pagination?.total || allSets.length,
+              rate: 0 
+            }
+          })
+          .eq('id', job.id)
       }
 
       console.log(`Fetched ${allSets.length} sets for ${gameSlug}`)
@@ -86,7 +99,7 @@ serve(async (req) => {
       let syncedCount = 0
       const errors: string[] = []
 
-      // Update progress
+      // Update progress with final total
       await supabaseClient
         .from('sync_jobs')
         .update({ 
@@ -94,44 +107,55 @@ serve(async (req) => {
         })
         .eq('id', job.id)
 
-      // Sync each set
-      for (const set of allSets) {
+      // Sync each set with batch operations
+      const syncBatchSize = 25 // Process 25 sets per database transaction
+      for (let i = 0; i < allSets.length; i += syncBatchSize) {
+        const batch = allSets.slice(i, i + syncBatchSize)
+        
         try {
+          // Prepare batch data
+          const batchData = batch.map(set => ({
+            game_id: game.id,
+            name: set.name,
+            code: set.code,
+            release_date: set.release_date,
+            justtcg_set_id: set.id,
+            card_count: set.card_count || 0,
+            sync_status: 'pending'
+          }))
+
           const { error } = await supabaseClient
             .from('sets')
-            .upsert({
-              game_id: game.id,
-              name: set.name,
-              code: set.code,
-              release_date: set.release_date,
-              justtcg_set_id: set.id,
-              card_count: set.card_count || 0,
-              sync_status: 'pending'
-            }, {
+            .upsert(batchData, {
               onConflict: 'game_id,code'
             })
 
           if (error) {
-            errors.push(`Set ${set.code}: ${error.message}`)
+            for (const set of batch) {
+              errors.push(`Set ${set.code}: ${error.message}`)
+            }
           } else {
-            syncedCount++
-          }
-
-          // Update progress every 10 sets
-          if (syncedCount % 10 === 0) {
-            await supabaseClient
-              .from('sync_jobs')
-              .update({ 
-                progress: { current: syncedCount, total: allSets.length, rate: 0 }
-              })
-              .eq('id', job.id)
+            syncedCount += batch.length
           }
 
         } catch (error) {
-          const errorMsg = `Set ${set.code}: ${error.message}`
-          errors.push(errorMsg)
-          console.error(errorMsg)
+          for (const set of batch) {
+            const errorMsg = `Set ${set.code}: ${error.message}`
+            errors.push(errorMsg)
+            console.error(errorMsg)
+          }
         }
+
+        // Update progress with rate calculation
+        const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000
+        const rate = Math.round(syncedCount / Math.max(elapsedSeconds, 1))
+        
+        await supabaseClient
+          .from('sync_jobs')
+          .update({ 
+            progress: { current: syncedCount, total: allSets.length, rate }
+          })
+          .eq('id', job.id)
       }
 
       // Complete job

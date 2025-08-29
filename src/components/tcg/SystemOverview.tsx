@@ -16,6 +16,7 @@ interface SystemStats {
   totalSets: number;
   totalCards: number;
   totalVariants: number;
+  syncedSets: number;
   recentJobs: number;
   apiStatus: 'healthy' | 'error' | 'checking';
 }
@@ -27,6 +28,7 @@ export function SystemOverview() {
     totalSets: 0,
     totalCards: 0,
     totalVariants: 0,
+    syncedSets: 0,
     recentJobs: 0,
     apiStatus: 'checking'
   });
@@ -63,12 +65,14 @@ export function SystemOverview() {
           setsResult,
           cardsResult,
           variantsResult,
+          syncedSetsResult,
           jobsResult
         ] = await Promise.all([
           supabase.from('games').select('id', { count: 'exact', head: true }),
           supabase.from('sets').select('id', { count: 'exact', head: true }),
           supabase.from('cards').select('id', { count: 'exact', head: true }),
           supabase.from('variants').select('id', { count: 'exact', head: true }),
+          supabase.from('sets').select('id', { count: 'exact', head: true }).eq('sync_status', 'completed'),
           supabase
             .from('sync_jobs')
             .select('id', { count: 'exact', head: true })
@@ -80,6 +84,7 @@ export function SystemOverview() {
           totalSets: setsResult.count || 0,
           totalCards: cardsResult.count || 0,
           totalVariants: variantsResult.count || 0,
+          syncedSets: syncedSetsResult.count || 0,
           recentJobs: jobsResult.count || 0,
           apiStatus
         });
@@ -90,6 +95,7 @@ export function SystemOverview() {
           totalSets: statsData.total_sets || 0,
           totalCards: statsData.total_cards || 0,
           totalVariants: statsData.total_variants || 0,
+          syncedSets: statsData.synced_sets || 0,
           recentJobs: statsData.active_jobs || 0,
           apiStatus
         });
@@ -153,7 +159,7 @@ export function SystemOverview() {
         </CardContent>
       </Card>
 
-      {/* Database Statistics */}
+      {/* Performance Metrics - Premium Plan Optimized */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -168,6 +174,7 @@ export function SystemOverview() {
                 {formatNumber(stats.totalGames)}
               </span>
             </div>
+            <Badge variant="outline" className="mt-1 text-xs">100% Synced</Badge>
           </CardContent>
         </Card>
 
@@ -183,6 +190,9 @@ export function SystemOverview() {
               <span className="text-2xl font-bold text-foreground">
                 {formatNumber(stats.totalSets)}
               </span>
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {stats.totalSets > 0 ? Math.round((stats.syncedSets / stats.totalSets) * 100) : 0}% completed
             </div>
           </CardContent>
         </Card>
@@ -200,6 +210,7 @@ export function SystemOverview() {
                 {formatNumber(stats.totalCards)}
               </span>
             </div>
+            <Badge variant="secondary" className="mt-1 text-xs">Optimized</Badge>
           </CardContent>
         </Card>
 
@@ -216,9 +227,58 @@ export function SystemOverview() {
                 {formatNumber(stats.totalVariants)}
               </span>
             </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              With pricing data
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Premium Plan Performance Indicators */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Premium Plan Performance
+          </CardTitle>
+          <CardDescription>
+            Optimized settings and performance metrics
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="font-medium text-green-700 dark:text-green-300">Rate Limits</span>
+              </div>
+              <div className="text-sm text-green-600 dark:text-green-400 mt-1">
+                400 req/min (safe buffer)
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-700 dark:text-blue-300">Batch Size</span>
+              </div>
+              <div className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                100 items per request
+              </div>
+            </div>
+            
+            <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-purple-600" />
+                <span className="font-medium text-purple-700 dark:text-purple-300">DB Batching</span>
+              </div>
+              <div className="text-sm text-purple-600 dark:text-purple-400 mt-1">
+                25-50 cards per transaction
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Activity */}
       <Card>

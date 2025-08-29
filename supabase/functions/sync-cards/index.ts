@@ -95,20 +95,21 @@ serve(async (req) => {
         .eq('id', set.id)
 
       let allCards: any[] = []
-      let page = 1
+      let offset = 0
       let hasMore = true
+      const batchSize = 100
 
-      // Fetch all cards with pagination
+      // Fetch all cards with offset-based pagination (Premium plan optimized)
       while (hasMore) {
-        const response = await client.getCards(gameSlug, setCode, page, 200)
+        const response = await client.getCards(gameSlug, set.justtcg_set_id, offset, batchSize)
         allCards = allCards.concat(response.cards)
         
-        hasMore = response.pagination?.has_more || false
-        page++
+        hasMore = response.pagination?.has_more || response.cards.length === batchSize
+        offset += batchSize
         
-        console.log(`Fetched page ${page - 1}, total cards: ${allCards.length}`)
+        console.log(`Fetched offset ${offset - batchSize}-${offset}, total cards: ${allCards.length}`)
         
-        // Update progress
+        // Update progress during fetch
         await supabaseClient
           .from('sync_jobs')
           .update({ 
@@ -127,79 +128,85 @@ serve(async (req) => {
       let syncedVariants = 0
       const errors: string[] = []
 
-      // Process cards in batches
-      const batchSize = 50
-      for (let i = 0; i < allCards.length; i += batchSize) {
-        const batch = allCards.slice(i, i + batchSize)
+      // Process cards in optimized batches for database operations
+      const dbBatchSize = 25 // Optimized batch size for database performance
+      for (let i = 0; i < allCards.length; i += dbBatchSize) {
+        const batch = allCards.slice(i, i + dbBatchSize)
         
-        for (const card of batch) {
-          try {
-            // Insert card
-            const { data: insertedCard, error: cardError } = await supabaseClient
-              .from('cards')
-              .upsert({
-                set_id: set.id,
-                name: card.name,
-                number: card.number,
-                rarity: card.rarity,
-                justtcg_card_id: card.id,
-                tcgplayer_id: card.tcgplayer_id,
-                image_url: card.image_url
-              }, {
-                onConflict: 'justtcg_card_id'
-              })
-              .select()
-              .single()
+        // Prepare card data using client helper
+        const cardsBatch = batch.map(card => ({
+          set_id: set.id,
+          ...JustTCGClient.processCardForStorage(card)
+        }))
 
-            if (cardError) {
-              errors.push(`Card ${card.name}: ${cardError.message}`)
-              continue
+        try {
+          // Batch insert cards
+          const { data: insertedCards, error: cardsError } = await supabaseClient
+            .from('cards')
+            .upsert(cardsBatch, {
+              onConflict: 'justtcg_card_id'
+            })
+            .select()
+
+          if (cardsError) {
+            for (const card of batch) {
+              errors.push(`Card ${card.name}: ${cardsError.message}`)
             }
+            continue
+          }
 
-            syncedCards++
+          syncedCards += insertedCards.length
 
-            // Insert variants if present
-            if (card.variants && card.variants.length > 0) {
+          // Process variants for this batch
+          const variantsBatch: any[] = []
+          for (let j = 0; j < batch.length; j++) {
+            const card = batch[j]
+            const insertedCard = insertedCards.find(ic => ic.justtcg_card_id === card.id)
+            
+            if (insertedCard && card.variants && card.variants.length > 0) {
               for (const variant of card.variants) {
-                try {
-                  const { error: variantError } = await supabaseClient
-                    .from('variants')
-                    .upsert({
-                      card_id: insertedCard.id,
-                      condition: variant.condition,
-                      printing: variant.printing || 'normal',
-                      price_cents: variant.price_cents,
-                      justtcg_variant_id: variant.id
-                    }, {
-                      onConflict: 'justtcg_variant_id'
-                    })
-
-                  if (variantError) {
-                    errors.push(`Variant ${variant.id}: ${variantError.message}`)
-                  } else {
-                    syncedVariants++
-                  }
-                } catch (error) {
-                  errors.push(`Variant ${variant.id}: ${error.message}`)
-                }
+                variantsBatch.push({
+                  card_id: insertedCard.id,
+                  ...JustTCGClient.processVariantForStorage(variant)
+                })
               }
             }
+          }
 
-          } catch (error) {
+          // Batch insert variants if any
+          if (variantsBatch.length > 0) {
+            const { error: variantsError } = await supabaseClient
+              .from('variants')
+              .upsert(variantsBatch, {
+                onConflict: 'justtcg_variant_id'
+              })
+
+            if (variantsError) {
+              errors.push(`Variants batch: ${variantsError.message}`)
+            } else {
+              syncedVariants += variantsBatch.length
+            }
+          }
+
+        } catch (error) {
+          for (const card of batch) {
             const errorMsg = `Card ${card.name}: ${error.message}`
             errors.push(errorMsg)
             console.error(errorMsg)
           }
         }
 
-        // Update progress after each batch
+        // Update progress with performance metrics
+        const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000
+        const cardsPerSecond = Math.round(syncedCards / Math.max(elapsedSeconds, 1))
+        
         await supabaseClient
           .from('sync_jobs')
           .update({ 
             progress: { 
-              current: Math.min(i + batchSize, allCards.length),
+              current: Math.min(i + dbBatchSize, allCards.length),
               total: allCards.length,
-              rate: 0
+              rate: cardsPerSecond
             }
           })
           .eq('id', job.id)

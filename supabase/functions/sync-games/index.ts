@@ -63,40 +63,45 @@ serve(async (req) => {
         })
         .eq('id', job.id)
 
-      // Sync each game
+      // Sync each game with optimized data processing
       for (const game of games) {
         try {
+          const processedGame = {
+            name: game.name,
+            slug: game.slug, // Already mapped by client
+            justtcg_id: game.id,
+            is_active: true
+          };
+
           const { error } = await supabaseClient
             .from('games')
-            .upsert({
-              name: game.name,
-              slug: game.slug,
-              justtcg_id: game.id,
-              is_active: true
-            }, {
+            .upsert(processedGame, {
               onConflict: 'slug'
-            })
+            });
 
           if (error) {
-            errors.push(`Game ${game.name}: ${error.message}`)
+            errors.push(`Game ${game.name}: ${error.message}`);
           } else {
-            syncedCount++
+            syncedCount++;
           }
 
-          // Update progress every 5 games
+          // Update progress every 5 games with rate calculation
           if (syncedCount % 5 === 0) {
+            const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000;
+            const rate = Math.round(syncedCount / Math.max(elapsedSeconds, 1));
+            
             await supabaseClient
               .from('sync_jobs')
               .update({ 
-                progress: { current: syncedCount, total: games.length, rate: 0 }
+                progress: { current: syncedCount, total: games.length, rate }
               })
-              .eq('id', job.id)
+              .eq('id', job.id);
           }
 
         } catch (error) {
-          const errorMsg = `Game ${game.name}: ${error.message}`
-          errors.push(errorMsg)
-          console.error(errorMsg)
+          const errorMsg = `Game ${game.name}: ${error.message}`;
+          errors.push(errorMsg);
+          console.error(errorMsg);
         }
       }
 
