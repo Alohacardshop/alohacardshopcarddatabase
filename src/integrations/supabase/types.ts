@@ -14,16 +14,396 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cards: {
+        Row: {
+          cmc: number | null
+          color_identity: string[] | null
+          colors: string[] | null
+          created_at: string
+          details: Json | null
+          id: string
+          image_small_url: string | null
+          image_url: string | null
+          justtcg_card_id: string | null
+          keywords: string[] | null
+          loyalty: string | null
+          mana_cost: string | null
+          name: string
+          number: string | null
+          oracle_text: string | null
+          power: string | null
+          rarity: string | null
+          set_id: string
+          tcgplayer_id: string | null
+          toughness: string | null
+          type_line: string | null
+          updated_at: string
+        }
+        Insert: {
+          cmc?: number | null
+          color_identity?: string[] | null
+          colors?: string[] | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          image_small_url?: string | null
+          image_url?: string | null
+          justtcg_card_id?: string | null
+          keywords?: string[] | null
+          loyalty?: string | null
+          mana_cost?: string | null
+          name: string
+          number?: string | null
+          oracle_text?: string | null
+          power?: string | null
+          rarity?: string | null
+          set_id: string
+          tcgplayer_id?: string | null
+          toughness?: string | null
+          type_line?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cmc?: number | null
+          color_identity?: string[] | null
+          colors?: string[] | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          image_small_url?: string | null
+          image_url?: string | null
+          justtcg_card_id?: string | null
+          keywords?: string[] | null
+          loyalty?: string | null
+          mana_cost?: string | null
+          name?: string
+          number?: string | null
+          oracle_text?: string | null
+          power?: string | null
+          rarity?: string | null
+          set_id?: string
+          tcgplayer_id?: string | null
+          toughness?: string | null
+          type_line?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cards_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          justtcg_id: string | null
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          justtcg_id?: string | null
+          logo_url?: string | null
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          justtcg_id?: string | null
+          logo_url?: string | null
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sets: {
+        Row: {
+          card_count: number | null
+          code: string
+          created_at: string
+          description: string | null
+          game_id: string
+          id: string
+          image_url: string | null
+          justtcg_set_id: string | null
+          last_synced_at: string | null
+          name: string
+          release_date: string | null
+          sync_status: Database["public"]["Enums"]["sync_status_enum"] | null
+          updated_at: string
+        }
+        Insert: {
+          card_count?: number | null
+          code: string
+          created_at?: string
+          description?: string | null
+          game_id: string
+          id?: string
+          image_url?: string | null
+          justtcg_set_id?: string | null
+          last_synced_at?: string | null
+          name: string
+          release_date?: string | null
+          sync_status?: Database["public"]["Enums"]["sync_status_enum"] | null
+          updated_at?: string
+        }
+        Update: {
+          card_count?: number | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          game_id?: string
+          id?: string
+          image_url?: string | null
+          justtcg_set_id?: string | null
+          last_synced_at?: string | null
+          name?: string
+          release_date?: string | null
+          sync_status?: Database["public"]["Enums"]["sync_status_enum"] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sets_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_details: Json | null
+          game_slug: string | null
+          id: string
+          progress: number | null
+          results: Json | null
+          set_code: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["sync_job_status_enum"] | null
+          total: number | null
+          type: Database["public"]["Enums"]["sync_job_type_enum"]
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: Json | null
+          game_slug?: string | null
+          id?: string
+          progress?: number | null
+          results?: Json | null
+          set_code?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["sync_job_status_enum"] | null
+          total?: number | null
+          type: Database["public"]["Enums"]["sync_job_type_enum"]
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: Json | null
+          game_slug?: string | null
+          id?: string
+          progress?: number | null
+          results?: Json | null
+          set_code?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["sync_job_status_enum"] | null
+          total?: number | null
+          type?: Database["public"]["Enums"]["sync_job_type_enum"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      variants: {
+        Row: {
+          card_id: string
+          condition: Database["public"]["Enums"]["card_condition_enum"]
+          created_at: string
+          high_price_cents: number | null
+          id: string
+          is_available: boolean | null
+          justtcg_variant_id: string | null
+          last_updated: string | null
+          low_price_cents: number | null
+          market_price_cents: number | null
+          price_cents: number | null
+          printing: Database["public"]["Enums"]["card_printing_enum"]
+          updated_at: string
+        }
+        Insert: {
+          card_id: string
+          condition?: Database["public"]["Enums"]["card_condition_enum"]
+          created_at?: string
+          high_price_cents?: number | null
+          id?: string
+          is_available?: boolean | null
+          justtcg_variant_id?: string | null
+          last_updated?: string | null
+          low_price_cents?: number | null
+          market_price_cents?: number | null
+          price_cents?: number | null
+          printing?: Database["public"]["Enums"]["card_printing_enum"]
+          updated_at?: string
+        }
+        Update: {
+          card_id?: string
+          condition?: Database["public"]["Enums"]["card_condition_enum"]
+          created_at?: string
+          high_price_cents?: number | null
+          id?: string
+          is_available?: boolean | null
+          justtcg_variant_id?: string | null
+          last_updated?: string | null
+          low_price_cents?: number | null
+          market_price_cents?: number | null
+          price_cents?: number | null
+          printing?: Database["public"]["Enums"]["card_printing_enum"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variants_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "popular_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      database_stats: {
+        Row: {
+          active_jobs: number | null
+          cards_table_size: string | null
+          last_updated: string | null
+          recent_jobs: number | null
+          sync_status_breakdown: Json | null
+          synced_sets: number | null
+          total_cards: number | null
+          total_games: number | null
+          total_sets: number | null
+          total_variants: number | null
+          variants_table_size: string | null
+        }
+        Relationships: []
+      }
+      popular_cards: {
+        Row: {
+          avg_price_cents: number | null
+          game_name: string | null
+          id: string | null
+          image_url: string | null
+          last_price_update: string | null
+          max_price_cents: number | null
+          name: string | null
+          rarity: string | null
+          set_name: string | null
+          variant_count: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      search_cards: {
+        Args: {
+          game_slug?: string
+          limit_count?: number
+          search_query: string
+          set_code?: string
+        }
+        Returns: {
+          game_name: string
+          id: string
+          image_url: string
+          name: string
+          rank: number
+          rarity: string
+          set_name: string
+        }[]
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
+      }
     }
     Enums: {
-      [_ in never]: never
+      card_condition_enum:
+        | "mint"
+        | "near_mint"
+        | "excellent"
+        | "good"
+        | "light_played"
+        | "played"
+        | "poor"
+      card_printing_enum:
+        | "normal"
+        | "foil"
+        | "etched"
+        | "borderless"
+        | "extended"
+        | "showcase"
+      sync_job_status_enum: "queued" | "running" | "completed" | "failed"
+      sync_job_type_enum: "games" | "sets" | "cards"
+      sync_status_enum: "pending" | "syncing" | "completed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +530,27 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      card_condition_enum: [
+        "mint",
+        "near_mint",
+        "excellent",
+        "good",
+        "light_played",
+        "played",
+        "poor",
+      ],
+      card_printing_enum: [
+        "normal",
+        "foil",
+        "etched",
+        "borderless",
+        "extended",
+        "showcase",
+      ],
+      sync_job_status_enum: ["queued", "running", "completed", "failed"],
+      sync_job_type_enum: ["games", "sets", "cards"],
+      sync_status_enum: ["pending", "syncing", "completed", "failed"],
+    },
   },
 } as const
