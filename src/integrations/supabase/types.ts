@@ -25,7 +25,7 @@ export type Database = {
           image_small_url: string | null
           image_url: string | null
           item_type: Database["public"]["Enums"]["item_type_enum"]
-          justtcg_card_id: string | null
+          justtcg_card_id: string
           keywords: string[] | null
           loyalty: string | null
           mana_cost: string | null
@@ -50,7 +50,7 @@ export type Database = {
           image_small_url?: string | null
           image_url?: string | null
           item_type?: Database["public"]["Enums"]["item_type_enum"]
-          justtcg_card_id?: string | null
+          justtcg_card_id: string
           keywords?: string[] | null
           loyalty?: string | null
           mana_cost?: string | null
@@ -75,7 +75,7 @@ export type Database = {
           image_small_url?: string | null
           image_url?: string | null
           item_type?: Database["public"]["Enums"]["item_type_enum"]
-          justtcg_card_id?: string | null
+          justtcg_card_id?: string
           keywords?: string[] | null
           loyalty?: string | null
           mana_cost?: string | null
@@ -263,7 +263,7 @@ export type Database = {
           high_price_cents: number | null
           id: string
           is_available: boolean | null
-          justtcg_variant_id: string | null
+          justtcg_variant_id: string
           last_updated: string | null
           low_price_cents: number | null
           market_price_cents: number | null
@@ -278,7 +278,7 @@ export type Database = {
           high_price_cents?: number | null
           id?: string
           is_available?: boolean | null
-          justtcg_variant_id?: string | null
+          justtcg_variant_id: string
           last_updated?: string | null
           low_price_cents?: number | null
           market_price_cents?: number | null
@@ -293,7 +293,7 @@ export type Database = {
           high_price_cents?: number | null
           id?: string
           is_available?: boolean | null
-          justtcg_variant_id?: string | null
+          justtcg_variant_id?: string
           last_updated?: string | null
           low_price_cents?: number | null
           market_price_cents?: number | null
