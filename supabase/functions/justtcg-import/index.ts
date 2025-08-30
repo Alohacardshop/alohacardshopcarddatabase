@@ -149,21 +149,22 @@ serve(async (req) => {
 
           syncedCards += insertedCards.length
 
-          // Process variants for this batch
-          const variantsBatch: any[] = []
-          for (let j = 0; j < batch.length; j++) {
-            const card = batch[j]
-            const insertedCard = insertedCards.find(ic => ic.justtcg_card_id === card.id)
-            
-            if (insertedCard && card.variants && card.variants.length > 0) {
-              for (const variant of card.variants) {
-                variantsBatch.push({
-                  card_id: insertedCard.id,
-                  ...JustTCGClient.processVariantForStorage(variant)
-                })
+              // Process variants for this batch
+              const variantsBatch: any[] = []
+              for (let j = 0; j < batch.length; j++) {
+                const card = batch[j]
+                const insertedCard = insertedCards.find(ic => ic.justtcg_card_id === card.id)
+                
+                if (insertedCard && card.variants && card.variants.length > 0) {
+                  for (const variant of card.variants) {
+                    const processedVariant = JustTCGClient.processVariantForStorage(variant)
+                    variantsBatch.push({
+                      card_id: insertedCard.id,
+                      ...processedVariant
+                    })
+                  }
+                }
               }
-            }
-          }
 
           // Batch insert variants if any
           if (variantsBatch.length > 0) {
@@ -174,6 +175,7 @@ serve(async (req) => {
               })
 
             if (variantsError) {
+              console.error('Variants insert error:', variantsError)
               errors.push(`Variants batch: ${variantsError.message}`)
             } else {
               syncedVariants += variantsBatch.length

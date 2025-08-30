@@ -131,19 +131,19 @@ serve(async (req) => {
               const dbCard = batch.find(c => c.justtcg_card_id === updatedCard.id);
               if (!dbCard || !updatedCard.variants) continue;
 
-              // Update variants for this card
-              for (const variant of updatedCard.variants) {
-                const variantData = JustTCGClient.processVariantForStorage(variant);
-                
-                const { error: variantError } = await supabase
-                  .from('variants')
-                  .upsert({
-                    card_id: dbCard.id,
-                    justtcg_variant_id: variant.id,
-                    ...variantData
-                  }, {
-                    onConflict: 'card_id,justtcg_variant_id'
-                  });
+            // Update variants for this card
+            for (const variant of updatedCard.variants) {
+              const processedVariant = JustTCGClient.processVariantForStorage(variant);
+              
+              const { error: variantError } = await supabase
+                .from('variants')
+                .upsert({
+                  card_id: dbCard.id,
+                  justtcg_variant_id: variant.id,
+                  ...processedVariant
+                }, {
+                  onConflict: 'card_id,justtcg_variant_id'
+                });
 
                 if (variantError) {
                   console.error(`Failed to upsert variant ${variant.id}:`, variantError);

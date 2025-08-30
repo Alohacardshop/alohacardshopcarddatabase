@@ -260,9 +260,45 @@ class JustTCGClient {
 
   // Process variant data for database storage
   static processVariantForStorage(variant: JustTCGVariant) {
+    // Normalize condition and printing values to match database enums
+    const normalizeCondition = (condition: string): string => {
+      const normalized = condition?.toLowerCase().trim();
+      switch (normalized) {
+        case 'mint': return 'mint';
+        case 'near mint': return 'near_mint';
+        case 'lightly played': return 'lightly_played';
+        case 'light played': return 'light_played';
+        case 'moderately played': return 'moderately_played';
+        case 'played': return 'played';
+        case 'heavily played': return 'heavily_played';
+        case 'poor': return 'poor';
+        case 'damaged': return 'damaged';
+        case 'good': return 'good';
+        case 'excellent': return 'excellent';
+        default: return 'near_mint'; // fallback
+      }
+    };
+
+    const normalizePrinting = (printing: string): string => {
+      const normalized = printing?.toLowerCase().trim() || 'normal';
+      switch (normalized) {
+        case 'normal': return 'normal';
+        case 'foil': return 'foil';
+        case 'holo': return 'holo';
+        case 'reverse holo': return 'reverse_holo';
+        case 'etched': return 'etched';
+        case 'borderless': return 'borderless';
+        case 'extended': return 'extended';
+        case 'showcase': return 'showcase';
+        case 'promo': return 'promo';
+        case 'first edition': return 'first_edition';
+        default: return 'normal'; // fallback
+      }
+    };
+
     return {
-      condition: variant.condition,
-      printing: variant.printing || 'normal',
+      condition: normalizeCondition(variant.condition || 'near_mint'),
+      printing: normalizePrinting(variant.printing || 'normal'),
       price_cents: variant.price ? Math.round(variant.price * 100) : null,
       justtcg_variant_id: variant.id,
       last_updated: variant.lastUpdated ? new Date(variant.lastUpdated).toISOString() : new Date().toISOString()
