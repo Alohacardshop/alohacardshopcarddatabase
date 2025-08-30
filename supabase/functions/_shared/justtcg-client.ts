@@ -210,15 +210,19 @@ class JustTCGClient {
     if (cardIds.length === 0) return [];
     
     console.log(`Batch fetching ${cardIds.length} cards`);
-    const response = await this.makeRequest<{ cards: JustTCGCard[] }>(
+    
+    // Format as array of lookup objects as expected by JustTCG batch API
+    const lookupObjects = cardIds.map(id => ({ id }));
+    
+    const response = await this.makeRequest<{ data: JustTCGCard[] }>(
       '/cards/batch',
       {
         method: 'POST',
-        body: JSON.stringify({ ids: cardIds })
+        body: JSON.stringify(lookupObjects)
       }
     );
     
-    return response.cards;
+    return response.data || [];
   }
 
   // Health check - simple API connectivity test
