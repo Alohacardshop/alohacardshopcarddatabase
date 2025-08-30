@@ -16,10 +16,9 @@ interface JustTCGGame {
 interface JustTCGSet {
   id: string;
   name: string;
-  code: string;
-  release_date: string;
-  card_count?: number;
-  game?: string;
+  game_id: string;
+  game: string;
+  cards_count: number;
 }
 
 interface JustTCGCard {

@@ -112,10 +112,9 @@ serve(async (req) => {
           const batchData = batch.map(set => ({
             game_id: game.id,
             name: set.name,
-            code: set.code,
-            release_date: set.release_date,
+            code: set.id, // JustTCG uses 'id' as the set code/identifier
             justtcg_set_id: set.id,
-            card_count: set.card_count || 0,
+            card_count: set.cards_count || 0,
             sync_status: 'pending'
           }))
 
@@ -127,7 +126,7 @@ serve(async (req) => {
 
           if (error) {
             for (const set of batch) {
-              errors.push(`Set ${set.code}: ${error.message}`)
+              errors.push(`Set ${set.id}: ${error.message}`)
             }
           } else {
             syncedCount += batch.length
@@ -135,7 +134,7 @@ serve(async (req) => {
 
         } catch (error) {
           for (const set of batch) {
-            const errorMsg = `Set ${set.code}: ${error.message}`
+            const errorMsg = `Set ${set.id}: ${error.message}`
             errors.push(errorMsg)
             console.error(errorMsg)
           }
