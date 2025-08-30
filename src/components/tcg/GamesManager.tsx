@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { JustTCGApi } from '@/lib/justtcg-api';
-import { Loader2, RefreshCw, Database, Calendar, Check } from 'lucide-react';
+import { Loader2, RefreshCw, Database, Calendar, Check, Zap, CheckSquare, Square } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -28,8 +28,10 @@ interface Game {
 export function GamesManager() {
   const { toast } = useToast();
   const [games, setGames] = useState<Game[]>([]);
+  const [selectedGames, setSelectedGames] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [massImporting, setMassImporting] = useState(false);
 
   useEffect(() => {
     fetchGames();
@@ -80,6 +82,66 @@ export function GamesManager() {
     }
   };
 
+  const massImportSelectedGames = async () => {
+    if (selectedGames.size === 0) {
+      toast({
+        title: 'No games selected',
+        description: 'Please select games to import',
+      });
+      return;
+    }
+
+    setMassImporting(true);
+    try {
+      const selectedGamesList = games.filter(g => selectedGames.has(g.id));
+      
+      for (const game of selectedGamesList) {
+        try {
+          // Start sets sync for each game
+          await JustTCGApi.discoverSets(game.slug);
+          
+          // Small delay between games to avoid overwhelming the API
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`Failed to start sets sync for ${game.name}:`, error);
+        }
+      }
+
+      toast({
+        title: 'Mass import started',
+        description: `Started importing sets for ${selectedGamesList.length} games`,
+      });
+
+      setSelectedGames(new Set());
+    } catch (error) {
+      toast({
+        title: 'Mass import failed',
+        description: 'Some imports may have failed to start',
+        variant: 'destructive'
+      });
+    } finally {
+      setMassImporting(false);
+    }
+  };
+
+  const toggleGameSelection = (gameId: string) => {
+    const newSelection = new Set(selectedGames);
+    if (newSelection.has(gameId)) {
+      newSelection.delete(gameId);
+    } else {
+      newSelection.add(gameId);
+    }
+    setSelectedGames(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedGames.size === games.filter(g => g.is_active).length) {
+      setSelectedGames(new Set());
+    } else {
+      setSelectedGames(new Set(games.filter(g => g.is_active).map(g => g.id)));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -102,18 +164,36 @@ export function GamesManager() {
                 Manage TCG games and sync from JustTCG API
               </CardDescription>
             </div>
-            <Button 
-              onClick={syncGames} 
-              disabled={syncing}
-              className="flex items-center gap-2"
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={syncGames} 
+                disabled={syncing}
+                className="flex items-center gap-2"
+              >
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync All Games
+              </Button>
+              
+              {selectedGames.size > 0 && (
+                <Button 
+                  onClick={massImportSelectedGames} 
+                  disabled={massImporting}
+                  variant="secondary"
+                  className="flex items-center gap-2"
+                >
+                  {massImporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  Import Selected ({selectedGames.size})
+                </Button>
               )}
-              Sync All Games
-            </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -139,6 +219,20 @@ export function GamesManager() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleSelectAll}
+                      className="h-8 w-8 p-0"
+                    >
+                      {selectedGames.size === games.filter(g => g.is_active).length && games.filter(g => g.is_active).length > 0 ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
                   <TableHead>Status</TableHead>
@@ -148,7 +242,25 @@ export function GamesManager() {
               </TableHeader>
               <TableBody>
                 {games.map((game) => (
-                  <TableRow key={game.id}>
+                  <TableRow 
+                    key={game.id}
+                    className={selectedGames.has(game.id) ? "bg-muted/50" : ""}
+                  >
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleGameSelection(game.id)}
+                        disabled={!game.is_active}
+                        className="h-8 w-8 p-0"
+                      >
+                        {selectedGames.has(game.id) ? (
+                          <CheckSquare className="h-4 w-4" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {game.name}
                     </TableCell>

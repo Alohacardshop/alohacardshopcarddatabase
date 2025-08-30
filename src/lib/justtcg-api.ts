@@ -54,4 +54,21 @@ export class JustTCGApi {
       throw error;
     }
   }
+
+  static async refreshVariants(gameSlug: string, setCode?: string) {
+    try {
+      const { data, error } = await supabase.functions.invoke('justtcg-refresh-variants', {
+        body: { gameSlug, setCode }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to refresh variants');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('JustTCG API Error - refreshVariants:', error);
+      throw error;
+    }
+  }
 }

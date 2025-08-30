@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { JustTCGApi } from '@/lib/justtcg-api';
-import { Loader2, RefreshCw, Database, Calendar, Package, Zap, Play, Filter } from 'lucide-react';
+import { Loader2, RefreshCw, Database, Calendar, Package, Zap, Play, Filter, DollarSign, CheckSquare, Square } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,10 +50,13 @@ export function SetsManager() {
   const [sets, setSets] = useState<SetItem[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingCards, setSyncingCards] = useState<string | null>(null);
+  const [refreshingPrices, setRefreshingPrices] = useState<string | null>(null);
   const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ completed: 0, total: 0, failed: 0 });
   const [syncingSetCodes, setSyncingSetCodes] = useState<Set<string>>(new Set());
 
@@ -169,6 +172,32 @@ export function SetsManager() {
     }
   };
 
+  const refreshPrices = async (setCode: string) => {
+    if (!selectedGame) return;
+    
+    setRefreshingPrices(setCode);
+    try {
+      const data = await JustTCGApi.refreshVariants(selectedGame, setCode);
+
+      toast({
+        title: 'Success',
+        description: `Price refresh started for ${setCode}. Job ID: ${data.job_id}`,
+      });
+
+      // Refresh sets after starting the refresh
+      setTimeout(() => fetchSets(selectedGame), 2000);
+    } catch (error) {
+      const message = (error as any)?.message || 'Failed to start price refresh';
+      toast({
+        title: 'Refresh failed',
+        description: message,
+        variant: 'destructive'
+      });
+    } finally {
+      setRefreshingPrices(null);
+    }
+  };
+
   // Filter sets based on status filter
   const filteredSets = sets.filter(set => {
     switch (statusFilter) {
@@ -190,34 +219,34 @@ export function SetsManager() {
   const syncAllCards = async () => {
     if (!selectedGame || bulkSyncing) return;
     
-    // Filter sets that aren't already syncing or completed from filtered sets
-    const setsToSync = filteredSets.filter(set => 
-      set.sync_status !== 'syncing' && set.sync_status !== 'completed'
-    );
+    // Use selected sets if any, otherwise use filtered sets
+    const targetSets = selectedSets.size > 0 
+      ? filteredSets.filter(set => selectedSets.has(set.id))
+      : filteredSets.filter(set => set.sync_status !== 'syncing' && set.sync_status !== 'completed');
     
-    if (setsToSync.length === 0) {
+    if (targetSets.length === 0) {
       toast({
         title: 'No sets to sync',
-        description: 'All sets are already synced or currently syncing.',
+        description: selectedSets.size > 0 ? 'No valid sets selected' : 'All sets are already synced or currently syncing',
       });
       return;
     }
 
     setBulkSyncing(true);
-    setBulkProgress({ completed: 0, total: setsToSync.length, failed: 0 });
-    setSyncingSetCodes(new Set(setsToSync.map(s => s.code)));
+    setBulkProgress({ completed: 0, total: targetSets.length, failed: 0 });
+    setSyncingSetCodes(new Set(targetSets.map(s => s.code)));
 
     toast({
       title: 'Bulk sync started',
-      description: `Starting sync for ${setsToSync.length} sets...`,
+      description: `Starting sync for ${targetSets.length} sets...`,
     });
 
     // Process sets with concurrency limit of 2
     const concurrency = 2;
     const results = { completed: 0, failed: 0 };
     
-    for (let i = 0; i < setsToSync.length; i += concurrency) {
-      const batch = setsToSync.slice(i, i + concurrency);
+    for (let i = 0; i < targetSets.length; i += concurrency) {
+      const batch = targetSets.slice(i, i + concurrency);
       
       await Promise.allSettled(
         batch.map(async (set) => {
@@ -237,7 +266,7 @@ export function SetsManager() {
       );
 
       // Small delay between batches to be respectful to the API
-      if (i + concurrency < setsToSync.length) {
+      if (i + concurrency < targetSets.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
@@ -246,12 +275,96 @@ export function SetsManager() {
     await fetchSets(selectedGame);
     setBulkSyncing(false);
     setSyncingSetCodes(new Set());
+    setSelectedSets(new Set()); // Clear selection after bulk operation
 
     toast({
       title: 'Bulk sync completed',
       description: `Completed: ${results.completed}, Failed: ${results.failed}`,
       variant: results.failed > 0 ? 'destructive' : 'default'
     });
+  };
+
+  const refreshAllPrices = async () => {
+    if (!selectedGame || bulkRefreshing) return;
+    
+    // Use selected sets if any, otherwise use filtered sets with completed status
+    const targetSets = selectedSets.size > 0 
+      ? filteredSets.filter(set => selectedSets.has(set.id))
+      : filteredSets.filter(set => set.sync_status === 'completed');
+    
+    if (targetSets.length === 0) {
+      toast({
+        title: 'No sets to refresh',
+        description: selectedSets.size > 0 ? 'No valid sets selected' : 'No completed sets found',
+      });
+      return;
+    }
+
+    setBulkRefreshing(true);
+    setBulkProgress({ completed: 0, total: targetSets.length, failed: 0 });
+    
+    toast({
+      title: 'Bulk price refresh started',
+      description: `Starting price refresh for ${targetSets.length} sets...`,
+    });
+
+    // Process sets with higher concurrency since refresh is lighter
+    const concurrency = 3;
+    const results = { completed: 0, failed: 0 };
+    
+    for (let i = 0; i < targetSets.length; i += concurrency) {
+      const batch = targetSets.slice(i, i + concurrency);
+      
+      await Promise.allSettled(
+        batch.map(async (set) => {
+          try {
+            await JustTCGApi.refreshVariants(selectedGame, set.code);
+            results.completed++;
+          } catch (error) {
+            console.error(`Failed to refresh prices for ${set.code}:`, error);
+            results.failed++;
+          } finally {
+            setBulkProgress(prev => ({ 
+              ...prev, 
+              completed: results.completed + results.failed 
+            }));
+          }
+        })
+      );
+
+      // Small delay between batches
+      if (i + concurrency < targetSets.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // Final cleanup
+    setBulkRefreshing(false);
+    setSelectedSets(new Set()); // Clear selection after bulk operation
+
+    toast({
+      title: 'Bulk price refresh completed',
+      description: `Completed: ${results.completed}, Failed: ${results.failed}`,
+      variant: results.failed > 0 ? 'destructive' : 'default'
+    });
+  };
+
+  const toggleSetSelection = (setId: string) => {
+    const newSelection = new Set(selectedSets);
+    if (newSelection.has(setId)) {
+      newSelection.delete(setId);
+    } else {
+      newSelection.add(setId);
+    }
+    setSelectedSets(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedSets.size === filteredSets.length) {
+      setSelectedSets(new Set());
+    } else {
+      setSelectedSets(new Set(filteredSets.map(set => set.id)));
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -333,47 +446,101 @@ export function SetsManager() {
                 </Button>
                 
                 {selectedGame && filteredSets.length > 0 && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button 
-                        variant="secondary"
-                        disabled={bulkSyncing || syncing}
-                        className="flex items-center gap-2"
-                      >
-                        {bulkSyncing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                        Sync All Cards
-                        {bulkSyncing && (
-                          <span className="text-xs">
-                            ({bulkProgress.completed}/{bulkProgress.total})
-                          </span>
-                        )}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Sync All Cards</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will start card import jobs for all filtered sets that haven't been synced yet. 
-                          This may take several minutes to complete.
-                          {filteredSets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length > 0 && (
-                            <div className="mt-2 p-2 bg-muted rounded-sm">
-                              <strong>{filteredSets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length}</strong> sets will be synced.
-                            </div>
+                  <div className="flex items-center gap-2">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="secondary"
+                          disabled={bulkSyncing || syncing}
+                          className="flex items-center gap-2"
+                        >
+                          {bulkSyncing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Zap className="h-4 w-4" />
                           )}
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={syncAllCards}>
-                          Start Bulk Sync
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                          {selectedSets.size > 0 ? `Import Selected (${selectedSets.size})` : 'Import All Cards'}
+                          {bulkSyncing && (
+                            <span className="text-xs">
+                              ({bulkProgress.completed}/{bulkProgress.total})
+                            </span>
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Import Cards</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will start card import jobs for the {selectedSets.size > 0 ? 'selected' : 'filtered'} sets. 
+                            This may take several minutes to complete.
+                            {(() => {
+                              const targetSets = selectedSets.size > 0 
+                                ? filteredSets.filter(set => selectedSets.has(set.id))
+                                : filteredSets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed');
+                              return targetSets.length > 0 && (
+                                <div className="mt-2 p-2 bg-muted rounded-sm">
+                                  <strong>{targetSets.length}</strong> sets will be imported.
+                                </div>
+                              );
+                            })()}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={syncAllCards}>
+                            Start Import
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="outline"
+                          disabled={bulkRefreshing || syncing}
+                          className="flex items-center gap-2"
+                        >
+                          {bulkRefreshing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <DollarSign className="h-4 w-4" />
+                          )}
+                          {selectedSets.size > 0 ? `Refresh Prices (${selectedSets.size})` : 'Refresh All Prices'}
+                          {bulkRefreshing && (
+                            <span className="text-xs">
+                              ({bulkProgress.completed}/{bulkProgress.total})
+                            </span>
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Refresh Prices</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will update variant pricing for the {selectedSets.size > 0 ? 'selected' : 'completed'} sets. 
+                            This is faster than a full import and only updates pricing data.
+                            {(() => {
+                              const targetSets = selectedSets.size > 0 
+                                ? filteredSets.filter(set => selectedSets.has(set.id))
+                                : filteredSets.filter(s => s.sync_status === 'completed');
+                              return targetSets.length > 0 && (
+                                <div className="mt-2 p-2 bg-muted rounded-sm">
+                                  <strong>{targetSets.length}</strong> sets will be refreshed.
+                                </div>
+                              );
+                            })()}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={refreshAllPrices}>
+                            Start Refresh
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 )}
               </div>
             </div>
@@ -416,6 +583,20 @@ export function SetsManager() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleSelectAll}
+                      className="h-8 w-8 p-0"
+                    >
+                      {selectedSets.size === filteredSets.length && filteredSets.length > 0 ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TableHead>
                   <TableHead>Set Name</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Release Date</TableHead>
@@ -426,7 +607,24 @@ export function SetsManager() {
               </TableHeader>
               <TableBody>
                 {filteredSets.map((set) => (
-                  <TableRow key={set.id}>
+                  <TableRow 
+                    key={set.id}
+                    className={selectedSets.has(set.id) ? "bg-muted/50" : ""}
+                  >
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleSetSelection(set.id)}
+                        className="h-8 w-8 p-0"
+                      >
+                        {selectedSets.has(set.id) ? (
+                          <CheckSquare className="h-4 w-4" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {set.name}
                     </TableCell>
@@ -453,24 +651,41 @@ export function SetsManager() {
                       {getStatusBadge(set.sync_status)}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => syncCards(set.code)}
-                        disabled={
-                          syncingCards === set.code || 
-                          bulkSyncing || 
-                          syncingSetCodes.has(set.code)
-                        }
-                        className="flex items-center gap-1"
-                      >
-                        {(syncingCards === set.code || syncingSetCodes.has(set.code)) ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Zap className="h-3 w-3" />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => syncCards(set.code)}
+                          disabled={
+                            syncingCards === set.code || 
+                            bulkSyncing || 
+                            syncingSetCodes.has(set.code)
+                          }
+                          className="flex items-center gap-1"
+                        >
+                          {(syncingCards === set.code || syncingSetCodes.has(set.code)) ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Zap className="h-3 w-3" />
+                          )}
+                          {set.sync_status === 'completed' ? 'Re-sync' : 'Import'}
+                        </Button>
+                        {set.sync_status === 'completed' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => refreshPrices(set.code)}
+                            disabled={refreshingPrices === set.code || bulkRefreshing}
+                            className="flex items-center gap-1"
+                          >
+                            {refreshingPrices === set.code ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <DollarSign className="h-3 w-3" />
+                            )}
+                          </Button>
                         )}
-                        Sync Cards
-                      </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
