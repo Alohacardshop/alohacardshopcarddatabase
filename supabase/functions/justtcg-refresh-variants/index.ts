@@ -102,13 +102,16 @@ serve(async (req) => {
         const total = cards.length;
         await supabase
           .from('sync_jobs')
-          .update({ total })
+          .update({ 
+            progress: 0,
+            total
+          })
           .eq('id', syncJob.id);
 
         console.log(`Processing ${total} cards for variant refresh`);
 
         // Process cards in batches
-        const batchSize = 50;
+        const batchSize = 200; // Premium plan: process 200 cards at a time
         for (let i = 0; i < cards.length; i += batchSize) {
           const batch = cards.slice(i, i + batchSize);
           const cardIds = batch
@@ -155,7 +158,10 @@ serve(async (req) => {
             // Update progress
             await supabase
               .from('sync_jobs')
-              .update({ progress: totalProcessed })
+              .update({ 
+                progress: totalProcessed,
+                total
+              })
               .eq('id', syncJob.id);
 
             console.log(`Processed ${totalProcessed}/${total} cards, updated ${totalUpdated} variants`);
@@ -174,6 +180,7 @@ serve(async (req) => {
             status: 'completed',
             completed_at: new Date().toISOString(),
             progress: totalProcessed,
+            total,
             results: { 
               processed: totalProcessed, 
               updated: totalUpdated,

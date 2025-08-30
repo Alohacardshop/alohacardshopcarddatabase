@@ -92,7 +92,7 @@ serve(async (req) => {
       let allCards: any[] = []
       let offset = 0
       let hasMore = true
-      const batchSize = 100
+      const batchSize = 200
 
       // Fetch all cards with offset-based pagination (Premium plan optimized)
       while (hasMore) {
@@ -108,11 +108,8 @@ serve(async (req) => {
         await supabaseClient
           .from('sync_jobs')
           .update({ 
-            progress: { 
-              current: allCards.length, 
-              total: response.pagination?.total || allCards.length,
-              rate: 0 
-            }
+            progress: allCards.length,
+            total: response.pagination?.total || allCards.length
           })
           .eq('id', job.id)
       }
@@ -192,17 +189,11 @@ serve(async (req) => {
         }
 
         // Update progress with performance metrics
-        const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000
-        const cardsPerSecond = Math.round(syncedCards / Math.max(elapsedSeconds, 1))
-        
         await supabaseClient
           .from('sync_jobs')
           .update({ 
-            progress: { 
-              current: Math.min(i + dbBatchSize, allCards.length),
-              total: allCards.length,
-              rate: cardsPerSecond
-            }
+            progress: Math.min(i + dbBatchSize, allCards.length),
+            total: allCards.length
           })
           .eq('id', job.id)
       }
@@ -230,7 +221,8 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length > allCards.length / 2 ? 'failed' : 'completed',
-          progress: { current: allCards.length, total: allCards.length, rate: 0 },
+          progress: allCards.length,
+          total: allCards.length,
           results,
           error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()

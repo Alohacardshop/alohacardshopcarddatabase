@@ -64,7 +64,7 @@ serve(async (req) => {
       let allSets: any[] = []
       let offset = 0
       let hasMore = true
-      const batchSize = 100
+      const batchSize = 200
 
       // Fetch all sets with offset-based pagination (Premium plan optimized)
       while (hasMore) {
@@ -80,11 +80,8 @@ serve(async (req) => {
         await supabaseClient
           .from('sync_jobs')
           .update({ 
-            progress: { 
-              current: allSets.length, 
-              total: response.pagination?.total || allSets.length,
-              rate: 0 
-            }
+            progress: allSets.length,
+            total: response.pagination?.total || allSets.length
           })
           .eq('id', job.id)
       }
@@ -98,7 +95,8 @@ serve(async (req) => {
       await supabaseClient
         .from('sync_jobs')
         .update({ 
-          progress: { current: 0, total: allSets.length, rate: 0 }
+          progress: 0,
+          total: allSets.length
         })
         .eq('id', job.id)
 
@@ -140,14 +138,12 @@ serve(async (req) => {
           }
         }
 
-        // Update progress with rate calculation
-        const elapsedSeconds = (Date.now() - Date.parse(job.started_at || job.created_at)) / 1000
-        const rate = Math.round(syncedCount / Math.max(elapsedSeconds, 1))
-        
+        // Update progress
         await supabaseClient
           .from('sync_jobs')
           .update({ 
-            progress: { current: syncedCount, total: allSets.length, rate }
+            progress: syncedCount,
+            total: allSets.length
           })
           .eq('id', job.id)
       }
@@ -164,7 +160,8 @@ serve(async (req) => {
         .from('sync_jobs')
         .update({
           status: errors.length === allSets.length ? 'failed' : 'completed',
-          progress: { current: syncedCount, total: allSets.length, rate: 0 },
+          progress: syncedCount,
+          total: allSets.length,
           results,
           error_details: errors.length > 0 ? { errors: errors.slice(0, 10) } : null,
           completed_at: new Date().toISOString()

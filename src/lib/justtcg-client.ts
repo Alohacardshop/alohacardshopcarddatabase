@@ -1,8 +1,8 @@
 /**
  * JustTCG API Client - Premium Plan Optimized
- * Rate limit: 400 requests per minute (safe buffer under 500 limit)
- * Batch size: 100 items per request (premium limit)
- * Smart delay: 150ms between requests
+ * Rate limit: 480 requests per minute (96% of 500 limit for safety)
+ * Batch size: 200 items per request (premium limit)
+ * Smart delay: 125ms between requests
  */
 
 interface JustTCGGame {
@@ -80,9 +80,9 @@ class JustTCGClient {
   private readonly rateLimiter: RateLimiter = {
     requests: 0,
     windowStart: Date.now(),
-    maxRequests: 400, // Safe buffer under 500 limit
+    maxRequests: 480, // 96% of 500 limit for safety
     windowMs: 60 * 1000, // 1 minute
-    delayMs: 150 // Smart delay between requests
+    delayMs: 125 // Smart delay between requests
   };
   private metrics: PerformanceMetrics = {
     totalRequests: 0,
@@ -215,7 +215,7 @@ class JustTCGClient {
     }));
   }
 
-  async getSets(gameSlug: string, offset = 0, limit = 100): Promise<{ sets: JustTCGSet[], pagination: any }> {
+  async getSets(gameSlug: string, offset = 0, limit = 200): Promise<{ sets: JustTCGSet[], pagination: any }> {
     const justTCGSlug = this.mapGameSlug(gameSlug);
     console.log(`Fetching sets for game: ${justTCGSlug}, offset: ${offset}, limit: ${limit}`);
     
@@ -226,7 +226,7 @@ class JustTCGClient {
     return response;
   }
 
-  async getCards(gameSlug: string, setId: string, offset = 0, limit = 100): Promise<{ cards: JustTCGCard[], pagination: any }> {
+  async getCards(gameSlug: string, setId: string, offset = 0, limit = 200): Promise<{ cards: JustTCGCard[], pagination: any }> {
     const justTCGSlug = this.mapGameSlug(gameSlug);
     console.log(`Fetching cards for ${justTCGSlug}/set/${setId}, offset: ${offset}, limit: ${limit}`);
     
