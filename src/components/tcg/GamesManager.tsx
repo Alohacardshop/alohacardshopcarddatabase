@@ -58,27 +58,17 @@ export function GamesManager() {
   const syncGames = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('sync-games', {
+      const { data, error } = await supabase.functions.invoke('discover-games', {
         body: {}
       });
 
       if (error) {
-        // Handle specific error cases with better user feedback
-        if (error.message.includes('403') || error.message.includes('unauthorized')) {
-          toast({
-            title: 'Not authorized',
-            description: 'You need admin privileges to perform this action.',
-            variant: 'destructive'
-          });
-        } else if (error.message.includes('500')) {
-          toast({
-            title: 'Server error',
-            description: 'Likely missing SUPABASE_SERVICE_ROLE_KEY or function env variable.',
-            variant: 'destructive'
-          });
-        } else {
-          throw error;
-        }
+        const serverMsg = (error as any)?.message || (error as any)?.error || 'Unknown error';
+        toast({
+          title: 'Sync failed',
+          description: serverMsg,
+          variant: 'destructive'
+        });
         return;
       }
 
@@ -90,10 +80,10 @@ export function GamesManager() {
       // Refresh games list after a short delay
       setTimeout(fetchGames, 2000);
     } catch (error) {
-      console.error('Failed to sync games:', error);
+      const message = (error as any)?.message || 'Failed to start games sync';
       toast({
         title: 'Error',
-        description: 'Failed to start games sync',
+        description: message,
         variant: 'destructive'
       });
     } finally {
