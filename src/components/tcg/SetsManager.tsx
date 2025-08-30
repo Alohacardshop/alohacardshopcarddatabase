@@ -284,13 +284,15 @@ export function SetsManager() {
     });
   };
 
-  const refreshAllPrices = async () => {
+  const refreshAllPrices = async (forceAll = false) => {
     if (!selectedGame || bulkRefreshing) return;
     
-    // Use selected sets if any, otherwise use filtered sets with completed status
+    // Use selected sets if any, otherwise use filtered sets with completed status (or all if forceAll)
     const targetSets = selectedSets.size > 0 
       ? filteredSets.filter(set => selectedSets.has(set.id))
-      : filteredSets.filter(set => set.sync_status === 'completed');
+      : forceAll 
+        ? filteredSets 
+        : filteredSets.filter(set => set.sync_status === 'completed');
     
     if (targetSets.length === 0) {
       toast({
@@ -346,6 +348,80 @@ export function SetsManager() {
       title: 'Bulk price refresh completed',
       description: `Completed: ${results.completed}, Failed: ${results.failed}`,
       variant: results.failed > 0 ? 'destructive' : 'default'
+    });
+  };
+
+  const completeGameSetup = async () => {
+    if (!selectedGame || bulkSyncing || bulkRefreshing) return;
+    
+    const incompleteSets = filteredSets.filter(set => 
+      set.sync_status !== 'syncing' && set.sync_status !== 'completed'
+    );
+    
+    if (incompleteSets.length === 0) {
+      // Just refresh variants for all sets
+      toast({
+        title: 'Starting complete refresh',
+        description: `Refreshing variants for all ${filteredSets.length} sets...`,
+      });
+      await refreshAllPrices(true);
+      return;
+    }
+
+    toast({
+      title: 'Complete game setup started',
+      description: `Will import ${incompleteSets.length} sets, then refresh all variants...`,
+    });
+
+    // First, import all incomplete sets
+    setBulkSyncing(true);
+    setBulkProgress({ completed: 0, total: incompleteSets.length, failed: 0 });
+    setSyncingSetCodes(new Set(incompleteSets.map(s => s.code)));
+
+    const concurrency = 2;
+    const importResults = { completed: 0, failed: 0 };
+    
+    for (let i = 0; i < incompleteSets.length; i += concurrency) {
+      const batch = incompleteSets.slice(i, i + concurrency);
+      
+      await Promise.allSettled(
+        batch.map(async (set) => {
+          try {
+            await JustTCGApi.importCards(selectedGame, set.code);
+            importResults.completed++;
+          } catch (error) {
+            console.error(`Failed to sync ${set.code}:`, error);
+            importResults.failed++;
+          } finally {
+            setBulkProgress(prev => ({ 
+              ...prev, 
+              completed: importResults.completed + importResults.failed 
+            }));
+          }
+        })
+      );
+
+      if (i + concurrency < incompleteSets.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Refresh sets data
+    await fetchSets(selectedGame);
+    setBulkSyncing(false);
+    setSyncingSetCodes(new Set());
+
+    toast({
+      title: 'Import phase completed',
+      description: `Imported: ${importResults.completed}, Failed: ${importResults.failed}. Starting variant refresh...`,
+    });
+
+    // Now refresh variants for ALL sets
+    await refreshAllPrices(true);
+
+    toast({
+      title: 'Complete game setup finished',
+      description: `Game ${selectedGame} is now fully set up with all cards and variants!`,
     });
   };
 
@@ -487,9 +563,9 @@ export function SetsManager() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={syncAllCards}>
-                            Start Import
-                          </AlertDialogAction>
+                        <AlertDialogAction onClick={syncAllCards}>
+                          Start Import
+                        </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -534,8 +610,65 @@ export function SetsManager() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={refreshAllPrices}>
+                          <AlertDialogAction onClick={() => refreshAllPrices()}>
                             Start Refresh
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="default"
+                          disabled={bulkSyncing || bulkRefreshing || syncing}
+                          className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-glow"
+                        >
+                          {(bulkSyncing || bulkRefreshing) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Zap className="h-4 w-4" />
+                          )}
+                          Complete Game Setup
+                          {(bulkSyncing || bulkRefreshing) && (
+                            <span className="text-xs">
+                              ({bulkProgress.completed}/{bulkProgress.total})
+                            </span>
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Complete Game Setup</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will fully complete the setup for {selectedGame}:
+                            <div className="mt-2 space-y-1 text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                Import cards for all incomplete sets
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                Refresh variants and prices for ALL sets
+                              </div>
+                            </div>
+                            {(() => {
+                              const incompleteSets = filteredSets.filter(set => 
+                                set.sync_status !== 'syncing' && set.sync_status !== 'completed'
+                              );
+                              return (
+                                <div className="mt-3 p-2 bg-muted rounded-sm">
+                                  <strong>{incompleteSets.length}</strong> sets need importing,{' '}
+                                  <strong>{filteredSets.length}</strong> sets will get variant refresh.
+                                </div>
+                              );
+                            })()}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={completeGameSetup}>
+                            Complete Setup
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
