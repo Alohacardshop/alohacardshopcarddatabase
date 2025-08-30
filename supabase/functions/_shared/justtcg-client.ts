@@ -183,22 +183,28 @@ class JustTCGClient {
     const justTCGSlug = this.mapGameSlug(gameSlug);
     console.log(`Fetching sets for game: ${justTCGSlug}, offset: ${offset}, limit: ${limit}`);
     
-    const response = await this.makeRequest<{ sets: JustTCGSet[], pagination: any }>(
+    const response = await this.makeRequest<{ data: JustTCGSet[], _metadata: any }>(
       `/sets?game=${justTCGSlug}&limit=${limit}&offset=${offset}`
     );
     
-    return response;
+    return { 
+      sets: response.data, 
+      pagination: response._metadata 
+    };
   }
 
   async getCards(gameSlug: string, setId: string, offset = 0, limit = 100): Promise<{ cards: JustTCGCard[], pagination: any }> {
     const justTCGSlug = this.mapGameSlug(gameSlug);
     console.log(`Fetching cards for ${justTCGSlug}/set/${setId}, offset: ${offset}, limit: ${limit}`);
     
-    const response = await this.makeRequest<{ cards: JustTCGCard[], pagination: any }>(
+    const response = await this.makeRequest<{ data: JustTCGCard[], _metadata: any }>(
       `/cards?game=${justTCGSlug}&set=${setId}&limit=${limit}&offset=${offset}&include_variants=true`
     );
     
-    return response;
+    return { 
+      cards: response.data, 
+      pagination: response._metadata 
+    };
   }
 
   async batchGetCards(cardIds: string[]): Promise<JustTCGCard[]> {
