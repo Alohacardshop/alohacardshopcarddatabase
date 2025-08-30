@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { JustTCGApi } from '@/lib/justtcg-api';
 import { Loader2, RefreshCw, Database, Calendar, Package, Zap } from 'lucide-react';
 import {
   Table,
@@ -106,19 +107,7 @@ export function SetsManager() {
     
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('discover-sets', {
-        body: { gameSlug: selectedGame }
-      });
-
-      if (error) {
-        const serverMsg = (error as any)?.message || (error as any)?.error || 'Unknown error';
-        toast({
-          title: 'Sync failed',
-          description: serverMsg,
-          variant: 'destructive'
-        });
-        return;
-      }
+      const data = await JustTCGApi.discoverSets(selectedGame);
 
       toast({
         title: 'Success',
@@ -130,7 +119,7 @@ export function SetsManager() {
     } catch (error) {
       const message = (error as any)?.message || 'Failed to start sets sync';
       toast({
-        title: 'Error',
+        title: 'Sync failed',
         description: message,
         variant: 'destructive'
       });
@@ -144,29 +133,7 @@ export function SetsManager() {
     
     setSyncingCards(setCode);
     try {
-      const { data, error } = await supabase.functions.invoke('justtcg-import', {
-        body: { gameSlug: selectedGame, setCode }
-      });
-
-      if (error) {
-        // Handle specific error cases with better user feedback
-        if (error.message.includes('403') || error.message.includes('unauthorized')) {
-          toast({
-            title: 'Not authorized',
-            description: 'You need admin privileges to perform this action.',
-            variant: 'destructive'
-          });
-        } else if (error.message.includes('500')) {
-          toast({
-            title: 'Server error',
-            description: 'Likely missing SUPABASE_SERVICE_ROLE_KEY or function env variable.',
-            variant: 'destructive'
-          });
-        } else {
-          throw error;
-        }
-        return;
-      }
+      const data = await JustTCGApi.importCards(selectedGame, setCode);
 
       toast({
         title: 'Success',
@@ -178,7 +145,7 @@ export function SetsManager() {
     } catch (error) {
       const message = (error as any)?.message || 'Failed to start cards sync';
       toast({
-        title: 'Error',
+        title: 'Import failed',
         description: message,
         variant: 'destructive'
       });

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { JustTCGApi } from '@/lib/justtcg-api';
 import { Loader2, RefreshCw, Database, Calendar, Check } from 'lucide-react';
 import {
   Table,
@@ -58,19 +59,7 @@ export function GamesManager() {
   const syncGames = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('discover-games', {
-        body: {}
-      });
-
-      if (error) {
-        const serverMsg = (error as any)?.message || (error as any)?.error || 'Unknown error';
-        toast({
-          title: 'Sync failed',
-          description: serverMsg,
-          variant: 'destructive'
-        });
-        return;
-      }
+      const data = await JustTCGApi.discoverGames();
 
       toast({
         title: 'Success',
@@ -82,7 +71,7 @@ export function GamesManager() {
     } catch (error) {
       const message = (error as any)?.message || 'Failed to start games sync';
       toast({
-        title: 'Error',
+        title: 'Sync failed',
         description: message,
         variant: 'destructive'
       });
