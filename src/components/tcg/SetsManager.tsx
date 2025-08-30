@@ -6,7 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { JustTCGApi } from '@/lib/justtcg-api';
-import { Loader2, RefreshCw, Database, Calendar, Package, Zap } from 'lucide-react';
+import { Loader2, RefreshCw, Database, Calendar, Package, Zap, Play } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   Table,
   TableBody,
@@ -41,6 +52,9 @@ export function SetsManager() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingCards, setSyncingCards] = useState<string | null>(null);
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ completed: 0, total: 0, failed: 0 });
+  const [syncingSetCodes, setSyncingSetCodes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchGames();
@@ -154,6 +168,73 @@ export function SetsManager() {
     }
   };
 
+  const syncAllCards = async () => {
+    if (!selectedGame || bulkSyncing) return;
+    
+    // Filter sets that aren't already syncing or completed
+    const setsToSync = sets.filter(set => 
+      set.sync_status !== 'syncing' && set.sync_status !== 'completed'
+    );
+    
+    if (setsToSync.length === 0) {
+      toast({
+        title: 'No sets to sync',
+        description: 'All sets are already synced or currently syncing.',
+      });
+      return;
+    }
+
+    setBulkSyncing(true);
+    setBulkProgress({ completed: 0, total: setsToSync.length, failed: 0 });
+    setSyncingSetCodes(new Set(setsToSync.map(s => s.code)));
+
+    toast({
+      title: 'Bulk sync started',
+      description: `Starting sync for ${setsToSync.length} sets...`,
+    });
+
+    // Process sets with concurrency limit of 2
+    const concurrency = 2;
+    const results = { completed: 0, failed: 0 };
+    
+    for (let i = 0; i < setsToSync.length; i += concurrency) {
+      const batch = setsToSync.slice(i, i + concurrency);
+      
+      await Promise.allSettled(
+        batch.map(async (set) => {
+          try {
+            await JustTCGApi.importCards(selectedGame, set.code);
+            results.completed++;
+          } catch (error) {
+            console.error(`Failed to sync ${set.code}:`, error);
+            results.failed++;
+          } finally {
+            setBulkProgress(prev => ({ 
+              ...prev, 
+              completed: results.completed + results.failed 
+            }));
+          }
+        })
+      );
+
+      // Small delay between batches to be respectful to the API
+      if (i + concurrency < setsToSync.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    // Final refresh and cleanup
+    await fetchSets(selectedGame);
+    setBulkSyncing(false);
+    setSyncingSetCodes(new Set());
+
+    toast({
+      title: 'Bulk sync completed',
+      description: `Completed: ${results.completed}, Failed: ${results.failed}`,
+      variant: results.failed > 0 ? 'destructive' : 'default'
+    });
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
@@ -202,18 +283,64 @@ export function SetsManager() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button 
-                onClick={syncSets} 
-                disabled={syncing || !selectedGame}
-                className="flex items-center gap-2"
-              >
-                {syncing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={syncSets} 
+                  disabled={syncing || !selectedGame}
+                  className="flex items-center gap-2"
+                >
+                  {syncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Sync Sets
+                </Button>
+                
+                {selectedGame && sets.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="secondary"
+                        disabled={bulkSyncing || syncing}
+                        className="flex items-center gap-2"
+                      >
+                        {bulkSyncing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        Sync All Cards
+                        {bulkSyncing && (
+                          <span className="text-xs">
+                            ({bulkProgress.completed}/{bulkProgress.total})
+                          </span>
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Sync All Cards</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will start card import jobs for all sets that haven't been synced yet. 
+                          This may take several minutes to complete.
+                          {sets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length > 0 && (
+                            <div className="mt-2 p-2 bg-muted rounded-sm">
+                              <strong>{sets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length}</strong> sets will be synced.
+                            </div>
+                          )}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={syncAllCards}>
+                          Start Bulk Sync
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
-                Sync Sets
-              </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -295,10 +422,14 @@ export function SetsManager() {
                         size="sm"
                         variant="outline"
                         onClick={() => syncCards(set.code)}
-                        disabled={syncingCards === set.code}
+                        disabled={
+                          syncingCards === set.code || 
+                          bulkSyncing || 
+                          syncingSetCodes.has(set.code)
+                        }
                         className="flex items-center gap-1"
                       >
-                        {syncingCards === set.code ? (
+                        {(syncingCards === set.code || syncingSetCodes.has(set.code)) ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
                           <Zap className="h-3 w-3" />
