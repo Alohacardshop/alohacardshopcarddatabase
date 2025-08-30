@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { JustTCGApi } from '@/lib/justtcg-api';
-import { Loader2, RefreshCw, Database, Calendar, Package, Zap, Play } from 'lucide-react';
+import { Loader2, RefreshCw, Database, Calendar, Package, Zap, Play, Filter } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +49,7 @@ export function SetsManager() {
   const [games, setGames] = useState<Game[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingCards, setSyncingCards] = useState<string | null>(null);
@@ -168,11 +169,29 @@ export function SetsManager() {
     }
   };
 
+  // Filter sets based on status filter
+  const filteredSets = sets.filter(set => {
+    switch (statusFilter) {
+      case 'not_failed':
+        return set.sync_status !== 'failed';
+      case 'pending':
+        return set.sync_status === 'pending' || !set.sync_status;
+      case 'syncing':
+        return set.sync_status === 'syncing';
+      case 'completed':
+        return set.sync_status === 'completed';
+      case 'failed':
+        return set.sync_status === 'failed';
+      default:
+        return true; // 'all'
+    }
+  });
+
   const syncAllCards = async () => {
     if (!selectedGame || bulkSyncing) return;
     
-    // Filter sets that aren't already syncing or completed
-    const setsToSync = sets.filter(set => 
+    // Filter sets that aren't already syncing or completed from filtered sets
+    const setsToSync = filteredSets.filter(set => 
       set.sync_status !== 'syncing' && set.sync_status !== 'completed'
     );
     
@@ -283,6 +302,22 @@ export function SetsManager() {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {selectedGame && sets.length > 0 && (
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="not_failed">Not Failed</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="syncing">Syncing</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex items-center gap-2">
                 <Button 
                   onClick={syncSets} 
@@ -297,7 +332,7 @@ export function SetsManager() {
                   Sync Sets
                 </Button>
                 
-                {selectedGame && sets.length > 0 && (
+                {selectedGame && filteredSets.length > 0 && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button 
@@ -322,11 +357,11 @@ export function SetsManager() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Sync All Cards</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will start card import jobs for all sets that haven't been synced yet. 
+                          This will start card import jobs for all filtered sets that haven't been synced yet. 
                           This may take several minutes to complete.
-                          {sets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length > 0 && (
+                          {filteredSets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length > 0 && (
                             <div className="mt-2 p-2 bg-muted rounded-sm">
-                              <strong>{sets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length}</strong> sets will be synced.
+                              <strong>{filteredSets.filter(s => s.sync_status !== 'syncing' && s.sync_status !== 'completed').length}</strong> sets will be synced.
                             </div>
                           )}
                         </AlertDialogDescription>
@@ -390,7 +425,7 @@ export function SetsManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sets.map((set) => (
+                {filteredSets.map((set) => (
                   <TableRow key={set.id}>
                     <TableCell className="font-medium">
                       {set.name}
