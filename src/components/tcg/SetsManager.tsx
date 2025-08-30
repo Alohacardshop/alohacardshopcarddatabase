@@ -59,6 +59,8 @@ export function SetsManager() {
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ completed: 0, total: 0, failed: 0 });
   const [syncingSetCodes, setSyncingSetCodes] = useState<Set<string>>(new Set());
+  const [setupPhase, setSetupPhase] = useState<string>('');
+  const [setupProgress, setSetupProgress] = useState({ phase: '', completed: 0, total: 0, iteration: 0 });
 
   useEffect(() => {
     fetchGames();
@@ -354,74 +356,143 @@ export function SetsManager() {
   const completeGameSetup = async () => {
     if (!selectedGame || bulkSyncing || bulkRefreshing) return;
     
-    const incompleteSets = filteredSets.filter(set => 
-      set.sync_status !== 'syncing' && set.sync_status !== 'completed'
-    );
+    const maxIterations = 5; // Safety limit to prevent infinite loops
+    let iteration = 0;
+    let totalImported = 0;
+    let totalFailed = 0;
     
-    if (incompleteSets.length === 0) {
-      // Just refresh variants for all sets
-      toast({
-        title: 'Starting complete refresh',
-        description: `Refreshing variants for all ${filteredSets.length} sets...`,
-      });
-      await refreshAllPrices(true);
-      return;
-    }
-
-    toast({
-      title: 'Complete game setup started',
-      description: `Will import ${incompleteSets.length} sets, then refresh all variants...`,
-    });
-
-    // First, import all incomplete sets
+    setSetupPhase('initializing');
     setBulkSyncing(true);
-    setBulkProgress({ completed: 0, total: incompleteSets.length, failed: 0 });
-    setSyncingSetCodes(new Set(incompleteSets.map(s => s.code)));
-
-    const concurrency = 2;
-    const importResults = { completed: 0, failed: 0 };
     
-    for (let i = 0; i < incompleteSets.length; i += concurrency) {
-      const batch = incompleteSets.slice(i, i + concurrency);
-      
-      await Promise.allSettled(
-        batch.map(async (set) => {
-          try {
-            await JustTCGApi.importCards(selectedGame, set.code);
-            importResults.completed++;
-          } catch (error) {
-            console.error(`Failed to sync ${set.code}:`, error);
-            importResults.failed++;
-          } finally {
-            setBulkProgress(prev => ({ 
-              ...prev, 
-              completed: importResults.completed + importResults.failed 
-            }));
-          }
-        })
-      );
+    toast({
+      title: 'Complete Game Setup Started',
+      description: `Beginning comprehensive setup for ${selectedGame}...`,
+    });
 
-      if (i + concurrency < incompleteSets.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+    // Loop until all sets have cards or max iterations reached
+    while (iteration < maxIterations) {
+      iteration++;
+      
+      // Refresh sets data to get current state
+      await fetchSets(selectedGame);
+      
+      // Find sets with zero cards that aren't currently syncing
+      const zeroCardSets = sets.filter(set => 
+        set.card_count === 0 && 
+        set.sync_status !== 'syncing'
+      );
+      
+      if (zeroCardSets.length === 0) {
+        // No zero-card sets remain, we're done with imports
+        break;
       }
+      
+      setSetupPhase(`import-iteration-${iteration}`);
+      setSetupProgress({
+        phase: `Import Phase ${iteration}`,
+        completed: 0,
+        total: zeroCardSets.length,
+        iteration
+      });
+      
+      toast({
+        title: `Import Phase ${iteration}`,
+        description: `Found ${zeroCardSets.length} sets with zero cards. Starting import...`,
+      });
+
+      setBulkProgress({ completed: 0, total: zeroCardSets.length, failed: 0 });
+      setSyncingSetCodes(new Set(zeroCardSets.map(s => s.code)));
+
+      const concurrency = 2;
+      const phaseResults = { completed: 0, failed: 0 };
+      
+      // Process sets in batches
+      for (let i = 0; i < zeroCardSets.length; i += concurrency) {
+        const batch = zeroCardSets.slice(i, i + concurrency);
+        
+        await Promise.allSettled(
+          batch.map(async (set) => {
+            try {
+              await JustTCGApi.importCards(selectedGame, set.code);
+              phaseResults.completed++;
+              totalImported++;
+            } catch (error) {
+              console.error(`Failed to sync ${set.code}:`, error);
+              phaseResults.failed++;
+              totalFailed++;
+            } finally {
+              setBulkProgress(prev => ({ 
+                ...prev, 
+                completed: phaseResults.completed + phaseResults.failed 
+              }));
+              setSetupProgress(prev => ({
+                ...prev,
+                completed: phaseResults.completed + phaseResults.failed
+              }));
+            }
+          })
+        );
+
+        // Small delay between batches
+        if (i + concurrency < zeroCardSets.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      toast({
+        title: `Phase ${iteration} Complete`,
+        description: `Imported: ${phaseResults.completed}, Failed: ${phaseResults.failed}. Checking for remaining sets...`,
+      });
+      
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    // Refresh sets data
-    await fetchSets(selectedGame);
-    setBulkSyncing(false);
+    // Clear import state
     setSyncingSetCodes(new Set());
-
-    toast({
-      title: 'Import phase completed',
-      description: `Imported: ${importResults.completed}, Failed: ${importResults.failed}. Starting variant refresh...`,
-    });
+    setBulkSyncing(false);
+    
+    // Get final state after all imports
+    await fetchSets(selectedGame);
+    const finalZeroCardSets = sets.filter(set => set.card_count === 0);
+    
+    if (finalZeroCardSets.length > 0) {
+      toast({
+        title: 'Import Phase Complete (with remaining sets)',
+        description: `${finalZeroCardSets.length} sets still have zero cards after ${iteration} phases. Starting variant refresh...`,
+        variant: 'default'
+      });
+    } else {
+      toast({
+        title: 'All Sets Successfully Imported!',
+        description: `All sets now have cards! Starting comprehensive variant refresh...`,
+      });
+    }
 
     // Now refresh variants for ALL sets
+    setSetupPhase('variant-refresh');
+    setSetupProgress({
+      phase: 'Variant Refresh',
+      completed: 0,
+      total: sets.length,
+      iteration: iteration + 1
+    });
+    
     await refreshAllPrices(true);
 
+    // Final completion
+    setSetupPhase('');
+    setSetupProgress({ phase: '', completed: 0, total: 0, iteration: 0 });
+    
+    const completionMessage = `Setup Complete! 
+      📊 Stats: ${totalImported} sets imported, ${totalFailed} failed
+      🎯 Final result: ${sets.length - finalZeroCardSets.length}/${sets.length} sets have cards
+      ${finalZeroCardSets.length === 0 ? '✅ All sets successfully populated!' : `⚠️ ${finalZeroCardSets.length} sets still need manual attention`}`;
+    
     toast({
-      title: 'Complete game setup finished',
-      description: `Game ${selectedGame} is now fully set up with all cards and variants!`,
+      title: 'Complete Game Setup Finished!',
+      description: completionMessage,
+      variant: finalZeroCardSets.length === 0 ? 'default' : 'destructive'
     });
   };
 
@@ -630,9 +701,9 @@ export function SetsManager() {
                             <Zap className="h-4 w-4" />
                           )}
                           Complete Game Setup
-                          {(bulkSyncing || bulkRefreshing) && (
+                          {setupPhase && (
                             <span className="text-xs">
-                              ({bulkProgress.completed}/{bulkProgress.total})
+                              {setupProgress.phase}
                             </span>
                           )}
                         </Button>
@@ -641,24 +712,26 @@ export function SetsManager() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Complete Game Setup</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will fully complete the setup for {selectedGame}:
+                            This will automatically complete the full setup for {selectedGame}:
                             <div className="mt-2 space-y-1 text-sm">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 bg-primary rounded-full"></span>
-                                Import cards for all incomplete sets
+                                Auto-import cards for sets with zero cards (up to 5 iterations)
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 bg-primary rounded-full"></span>
                                 Refresh variants and prices for ALL sets
                               </div>
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 bg-primary rounded-full"></span>
+                                Provide completion summary with statistics
+                              </div>
                             </div>
                             {(() => {
-                              const incompleteSets = filteredSets.filter(set => 
-                                set.sync_status !== 'syncing' && set.sync_status !== 'completed'
-                              );
+                              const zeroCardSets = filteredSets.filter(set => set.card_count === 0);
                               return (
                                 <div className="mt-3 p-2 bg-muted rounded-sm">
-                                  <strong>{incompleteSets.length}</strong> sets need importing,{' '}
+                                  <strong>{zeroCardSets.length}</strong> sets currently have zero cards,{' '}
                                   <strong>{filteredSets.length}</strong> sets will get variant refresh.
                                 </div>
                               );
