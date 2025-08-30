@@ -382,6 +382,14 @@ export type Database = {
         Args: { r: string; uid: string }
         Returns: boolean
       }
+      normalize_condition: {
+        Args: { api_condition: string }
+        Returns: Database["public"]["Enums"]["card_condition_enum"]
+      }
+      normalize_printing: {
+        Args: { api_printing: string }
+        Returns: Database["public"]["Enums"]["card_printing_enum"]
+      }
       search_cards: {
         Args: {
           game_slug?: string
@@ -421,6 +429,10 @@ export type Database = {
         | "light_played"
         | "played"
         | "poor"
+        | "lightly_played"
+        | "moderately_played"
+        | "heavily_played"
+        | "damaged"
       card_printing_enum:
         | "normal"
         | "foil"
@@ -428,6 +440,10 @@ export type Database = {
         | "borderless"
         | "extended"
         | "showcase"
+        | "holo"
+        | "reverse_holo"
+        | "promo"
+        | "first_edition"
       sync_job_status_enum: "queued" | "running" | "completed" | "failed"
       sync_job_type_enum: "games" | "sets" | "cards"
       sync_status_enum: "pending" | "syncing" | "completed" | "failed"
@@ -566,6 +582,10 @@ export const Constants = {
         "light_played",
         "played",
         "poor",
+        "lightly_played",
+        "moderately_played",
+        "heavily_played",
+        "damaged",
       ],
       card_printing_enum: [
         "normal",
@@ -574,6 +594,10 @@ export const Constants = {
         "borderless",
         "extended",
         "showcase",
+        "holo",
+        "reverse_holo",
+        "promo",
+        "first_edition",
       ],
       sync_job_status_enum: ["queued", "running", "completed", "failed"],
       sync_job_type_enum: ["games", "sets", "cards"],
