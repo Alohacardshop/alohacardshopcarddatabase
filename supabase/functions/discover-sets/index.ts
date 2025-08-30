@@ -119,7 +119,7 @@ serve(async (req) => {
           const { error } = await supabaseClient
             .from('sets')
             .upsert(batchData, {
-              onConflict: 'game_id,code'
+              onConflict: 'justtcg_set_id'
             })
 
           if (error) {
