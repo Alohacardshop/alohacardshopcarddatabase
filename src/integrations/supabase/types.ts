@@ -445,7 +445,7 @@ export type Database = {
         | "promo"
         | "first_edition"
       sync_job_status_enum: "queued" | "running" | "completed" | "failed"
-      sync_job_type_enum: "games" | "sets" | "cards"
+      sync_job_type_enum: "games" | "sets" | "cards" | "refresh_variants"
       sync_status_enum: "pending" | "syncing" | "completed" | "failed"
     }
     CompositeTypes: {
@@ -600,7 +600,7 @@ export const Constants = {
         "first_edition",
       ],
       sync_job_status_enum: ["queued", "running", "completed", "failed"],
-      sync_job_type_enum: ["games", "sets", "cards"],
+      sync_job_type_enum: ["games", "sets", "cards", "refresh_variants"],
       sync_status_enum: ["pending", "syncing", "completed", "failed"],
     },
   },
