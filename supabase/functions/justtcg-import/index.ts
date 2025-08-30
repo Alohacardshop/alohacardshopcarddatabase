@@ -125,63 +125,67 @@ serve(async (req) => {
       for (let i = 0; i < allCards.length; i += dbBatchSize) {
         const batch = allCards.slice(i, i + dbBatchSize)
         
-        // Filter and prepare card data using client helper
-        const validCards = batch.filter(card => {
-          // Filter out non-card items (booster packs, theme decks, etc.)
-          const name = card.name?.toLowerCase() || '';
-          const isBoosterPack = name.includes('booster pack') || name.includes('booster box');
-          const isThemeDeck = name.includes('theme deck') || name.includes('starter deck');
-          const isBundle = name.includes('bundle') || name.includes('collection');
-          const hasCardNumber = card.number && /^\d+/.test(card.number); // Must start with a digit
+        // Categorize and prepare all items (cards, booster packs, theme decks, etc.)
+        const categorizedItems = batch.map(item => {
+          const name = item.name?.toLowerCase() || '';
+          let itemType = 'card'; // default
           
-          return !isBoosterPack && !isThemeDeck && !isBundle && hasCardNumber;
+          if (name.includes('booster pack') || name.includes('booster box')) {
+            itemType = 'booster_pack';
+          } else if (name.includes('theme deck')) {
+            itemType = 'theme_deck';  
+          } else if (name.includes('starter deck')) {
+            itemType = 'starter_deck';
+          } else if (name.includes('bundle') || name.includes('collection')) {
+            itemType = 'bundle';
+          } else if (!item.number || !/^\d+/.test(item.number)) {
+            // Items without proper card numbers are likely other products
+            itemType = 'other';
+          }
+          
+          return {
+            set_id: set.id,
+            item_type: itemType,
+            ...JustTCGClient.processCardForStorage(item)
+          };
         });
 
-        const cardsBatch = validCards.map(card => ({
-          set_id: set.id,
-          ...JustTCGClient.processCardForStorage(card)
-        }))
-
         try {
-          if (cardsBatch.length === 0) {
-            console.log(`Skipped batch ${i}-${i + dbBatchSize}: no valid cards after filtering`)
-            continue;
-          }
-
-          // Batch insert cards
-          const { data: insertedCards, error: cardsError } = await supabaseClient
+          // Batch insert all items (cards, booster packs, theme decks, etc.)
+          const { data: insertedItems, error: itemsError } = await supabaseClient
             .from('cards')
-            .upsert(cardsBatch, {
+            .upsert(categorizedItems, {
               onConflict: 'justtcg_card_id'
             })
             .select()
 
-          if (cardsError) {
-            for (const card of validCards) {
-              errors.push(`Card ${card.name}: ${cardsError.message}`)
+          if (itemsError) {
+            for (const item of batch) {
+              errors.push(`Item ${item.name}: ${itemsError.message}`)
             }
             continue
           }
 
-          syncedCards += insertedCards.length
-          console.log(`Synced ${insertedCards.length} cards from batch ${i}-${i + dbBatchSize}`);
+          syncedCards += insertedItems.length
+          console.log(`Synced ${insertedItems.length} items from batch ${i}-${i + dbBatchSize}`);
 
-              // Process variants for this batch
-              const variantsBatch: any[] = []
-              for (let j = 0; j < validCards.length; j++) {
-                const card = validCards[j]
-                const insertedCard = insertedCards.find(ic => ic.justtcg_card_id === card.id)
-                
-                if (insertedCard && card.variants && card.variants.length > 0) {
-                  for (const variant of card.variants) {
-                    const processedVariant = JustTCGClient.processVariantForStorage(variant)
-                    variantsBatch.push({
-                      card_id: insertedCard.id,
-                      ...processedVariant
-                    })
-                  }
-                }
+          // Process variants only for actual cards (not booster packs, theme decks, etc.)
+          const variantsBatch: any[] = []
+          for (let j = 0; j < batch.length; j++) {
+            const item = batch[j]
+            const insertedItem = insertedItems.find(ii => ii.justtcg_card_id === item.id)
+            
+            // Only process variants for actual cards
+            if (insertedItem && insertedItem.item_type === 'card' && item.variants && item.variants.length > 0) {
+              for (const variant of item.variants) {
+                const processedVariant = JustTCGClient.processVariantForStorage(variant)
+                variantsBatch.push({
+                  card_id: insertedItem.id,
+                  ...processedVariant
+                })
               }
+            }
+          }
 
           // Batch insert variants if any
           if (variantsBatch.length > 0) {
@@ -200,8 +204,8 @@ serve(async (req) => {
           }
 
         } catch (error) {
-          for (const card of validCards) {
-            const errorMsg = `Card ${card.name}: ${error.message}`
+          for (const item of batch) {
+            const errorMsg = `Item ${item.name}: ${error.message}`
             errors.push(errorMsg)
             console.error(errorMsg)
           }

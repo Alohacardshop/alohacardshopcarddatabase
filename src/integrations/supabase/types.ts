@@ -24,6 +24,7 @@ export type Database = {
           id: string
           image_small_url: string | null
           image_url: string | null
+          item_type: Database["public"]["Enums"]["item_type_enum"]
           justtcg_card_id: string | null
           keywords: string[] | null
           loyalty: string | null
@@ -48,6 +49,7 @@ export type Database = {
           id?: string
           image_small_url?: string | null
           image_url?: string | null
+          item_type?: Database["public"]["Enums"]["item_type_enum"]
           justtcg_card_id?: string | null
           keywords?: string[] | null
           loyalty?: string | null
@@ -72,6 +74,7 @@ export type Database = {
           id?: string
           image_small_url?: string | null
           image_url?: string | null
+          item_type?: Database["public"]["Enums"]["item_type_enum"]
           justtcg_card_id?: string | null
           keywords?: string[] | null
           loyalty?: string | null
@@ -444,6 +447,14 @@ export type Database = {
         | "reverse_holo"
         | "promo"
         | "first_edition"
+      item_type_enum:
+        | "card"
+        | "booster_pack"
+        | "theme_deck"
+        | "starter_deck"
+        | "bundle"
+        | "collection"
+        | "other"
       sync_job_status_enum: "queued" | "running" | "completed" | "failed"
       sync_job_type_enum: "games" | "sets" | "cards" | "refresh_variants"
       sync_status_enum: "pending" | "syncing" | "completed" | "failed"
@@ -598,6 +609,15 @@ export const Constants = {
         "reverse_holo",
         "promo",
         "first_edition",
+      ],
+      item_type_enum: [
+        "card",
+        "booster_pack",
+        "theme_deck",
+        "starter_deck",
+        "bundle",
+        "collection",
+        "other",
       ],
       sync_job_status_enum: ["queued", "running", "completed", "failed"],
       sync_job_type_enum: ["games", "sets", "cards", "refresh_variants"],
