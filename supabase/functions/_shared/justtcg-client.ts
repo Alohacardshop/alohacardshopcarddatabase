@@ -8,7 +8,9 @@
 interface JustTCGGame {
   id: string;
   name: string;
-  slug: string;
+  count: number;
+  cards_count: number;
+  sets_count: number;
 }
 
 interface JustTCGSet {
@@ -119,7 +121,7 @@ class JustTCGClient {
       const response = await fetch(url, {
         ...options,
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'X-API-Key': this.apiKey,
           'Content-Type': 'application/json',
           ...options.headers,
         },
@@ -172,13 +174,9 @@ class JustTCGClient {
 
   async getGames(): Promise<JustTCGGame[]> {
     console.log('Fetching games from JustTCG API');
-    const response = await this.makeRequest<{ games: JustTCGGame[] }>('/games');
+    const response = await this.makeRequest<{ data: JustTCGGame[], _metadata: any }>('/games');
     
-    // Map JustTCG slugs to our internal slugs
-    return response.games.map(game => ({
-      ...game,
-      slug: this.mapGameSlug(game.slug, true)
-    }));
+    return response.data;
   }
 
   async getSets(gameSlug: string, offset = 0, limit = 100): Promise<{ sets: JustTCGSet[], pagination: any }> {
@@ -221,7 +219,7 @@ class JustTCGClient {
   // Health check - simple API connectivity test
   async healthCheck(): Promise<boolean> {
     try {
-      await this.makeRequest<{ games: JustTCGGame[] }>('/games');
+      await this.makeRequest<{ data: JustTCGGame[], _metadata: any }>('/games');
       return true;
     } catch (error) {
       console.error('Health check failed:', error);

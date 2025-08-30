@@ -78,7 +78,7 @@ serve(async (req) => {
         try {
           const processedGame = {
             name: game.name,
-            slug: game.slug, // Already mapped by client
+            slug: game.id, // Use id as slug
             justtcg_id: game.id,
             is_active: true
           };
