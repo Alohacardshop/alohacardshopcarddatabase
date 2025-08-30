@@ -125,13 +125,29 @@ serve(async (req) => {
       for (let i = 0; i < allCards.length; i += dbBatchSize) {
         const batch = allCards.slice(i, i + dbBatchSize)
         
-        // Prepare card data using client helper
-        const cardsBatch = batch.map(card => ({
+        // Filter and prepare card data using client helper
+        const validCards = batch.filter(card => {
+          // Filter out non-card items (booster packs, theme decks, etc.)
+          const name = card.name?.toLowerCase() || '';
+          const isBoosterPack = name.includes('booster pack') || name.includes('booster box');
+          const isThemeDeck = name.includes('theme deck') || name.includes('starter deck');
+          const isBundle = name.includes('bundle') || name.includes('collection');
+          const hasCardNumber = card.number && /^\d+/.test(card.number); // Must start with a digit
+          
+          return !isBoosterPack && !isThemeDeck && !isBundle && hasCardNumber;
+        });
+
+        const cardsBatch = validCards.map(card => ({
           set_id: set.id,
           ...JustTCGClient.processCardForStorage(card)
         }))
 
         try {
+          if (cardsBatch.length === 0) {
+            console.log(`Skipped batch ${i}-${i + dbBatchSize}: no valid cards after filtering`)
+            continue;
+          }
+
           // Batch insert cards
           const { data: insertedCards, error: cardsError } = await supabaseClient
             .from('cards')
@@ -141,18 +157,19 @@ serve(async (req) => {
             .select()
 
           if (cardsError) {
-            for (const card of batch) {
+            for (const card of validCards) {
               errors.push(`Card ${card.name}: ${cardsError.message}`)
             }
             continue
           }
 
           syncedCards += insertedCards.length
+          console.log(`Synced ${insertedCards.length} cards from batch ${i}-${i + dbBatchSize}`);
 
               // Process variants for this batch
               const variantsBatch: any[] = []
-              for (let j = 0; j < batch.length; j++) {
-                const card = batch[j]
+              for (let j = 0; j < validCards.length; j++) {
+                const card = validCards[j]
                 const insertedCard = insertedCards.find(ic => ic.justtcg_card_id === card.id)
                 
                 if (insertedCard && card.variants && card.variants.length > 0) {
@@ -183,7 +200,7 @@ serve(async (req) => {
           }
 
         } catch (error) {
-          for (const card of batch) {
+          for (const card of validCards) {
             const errorMsg = `Card ${card.name}: ${error.message}`
             errors.push(errorMsg)
             console.error(errorMsg)
