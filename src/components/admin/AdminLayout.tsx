@@ -9,8 +9,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   Settings,
   Database,
@@ -102,16 +109,37 @@ function AdminSidebar() {
                 <SidebarMenu>
                   {group.items.map((item) => (
                     <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <NavLink 
-                          to={item.url} 
-                          end={item.url === '/admin'}
-                          className={getNavCls}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          {state === "expanded" && <span>{item.title}</span>}
-                        </NavLink>
-                      </SidebarMenuButton>
+                      {state === "collapsed" ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton asChild>
+                              <NavLink 
+                                to={item.url} 
+                                end={item.url === '/admin'}
+                                className={getNavCls}
+                                aria-label={item.title}
+                                title={item.title}
+                              >
+                                <item.icon className="h-4 w-4" />
+                              </NavLink>
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="font-medium">
+                            {item.title}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <SidebarMenuButton asChild>
+                          <NavLink 
+                            to={item.url} 
+                            end={item.url === '/admin'}
+                            className={getNavCls}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.title}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      )}
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
@@ -120,26 +148,29 @@ function AdminSidebar() {
           ))}
         </div>
       </SidebarContent>
+      <SidebarRail />
     </Sidebar>
   );
 }
 
 export function AdminLayout() {
   return (
-    <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
-        <AdminSidebar />
-        
-        <div className="flex-1 flex flex-col min-w-0">
-          <AdminTopNavigation />
+    <TooltipProvider>
+      <SidebarProvider>
+        <div className="min-h-screen flex w-full bg-background">
+          <AdminSidebar />
           
-          <main className="flex-1 p-4 sm:p-6 overflow-auto bg-muted/30">
-            <div className="max-w-screen-2xl mx-auto">
-              <Outlet />
-            </div>
-          </main>
+          <div className="flex-1 flex flex-col min-w-0">
+            <AdminTopNavigation />
+            
+            <main className="flex-1 p-4 sm:p-6 overflow-auto bg-muted/30">
+              <div className="max-w-screen-2xl mx-auto">
+                <Outlet />
+              </div>
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
