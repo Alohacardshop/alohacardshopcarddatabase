@@ -81,7 +81,7 @@ function AdminSidebar() {
   ];
 
   return (
-    <Sidebar collapsible="icon" className="border-r">
+    <Sidebar collapsible="icon" className="border-r" style={{ width: state === "collapsed" ? "60px" : "240px" }}>
       <SidebarContent className="gap-0">
         {/* Header */}
         <div className="border-b p-4">
@@ -109,37 +109,27 @@ function AdminSidebar() {
                 <SidebarMenu>
                   {group.items.map((item) => (
                     <SidebarMenuItem key={item.title}>
-                      {state === "collapsed" ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <SidebarMenuButton asChild>
-                              <NavLink 
-                                to={item.url} 
-                                end={item.url === '/admin'}
-                                className={getNavCls}
-                                aria-label={item.title}
-                                title={item.title}
-                              >
-                                <item.icon className="h-4 w-4" />
-                              </NavLink>
-                            </SidebarMenuButton>
-                          </TooltipTrigger>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SidebarMenuButton asChild>
+                            <NavLink 
+                              to={item.url} 
+                              end={item.url === '/admin'}
+                              className={getNavCls}
+                              aria-label={item.title}
+                              title={item.title}
+                            >
+                              <item.icon className="h-4 w-4 shrink-0" />
+                              {state === "expanded" && <span>{item.title}</span>}
+                            </NavLink>
+                          </SidebarMenuButton>
+                        </TooltipTrigger>
+                        {state === "collapsed" && (
                           <TooltipContent side="right" className="font-medium">
                             {item.title}
                           </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <SidebarMenuButton asChild>
-                          <NavLink 
-                            to={item.url} 
-                            end={item.url === '/admin'}
-                            className={getNavCls}
-                          >
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.title}</span>
-                          </NavLink>
-                        </SidebarMenuButton>
-                      )}
+                        )}
+                      </Tooltip>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
