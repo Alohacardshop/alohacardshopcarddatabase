@@ -16,6 +16,7 @@ import { DataBrowser } from "./pages/admin/DataBrowser";
 import { APITesting } from "./pages/admin/APITesting";
 import { SetsManager } from "./components/tcg/SetsManager";
 import { JobMonitor } from "./components/tcg/JobMonitor";
+import { Developers } from "./pages/admin/Developers";
 import AdminSetup from "./pages/admin/AdminSetup";
 import Health from "./pages/debug/Health";
 
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="jobs" element={<JobMonitor />} />
               <Route path="data" element={<DataBrowser />} />
               <Route path="api-test" element={<APITesting />} />
+              <Route path="developers" element={<Developers />} />
             </Route>
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -34,7 +34,8 @@ import {
   Home,
   ChevronRight,
   Bell,
-  User
+  User,
+  Code
 } from 'lucide-react';
 
 const adminMenuItems = [
@@ -45,6 +46,7 @@ const adminMenuItems = [
   { title: 'Job Monitor', url: '/admin/jobs', icon: FileSearch },
   { title: 'Data Browser', url: '/admin/data', icon: Search },
   { title: 'API Testing', url: '/admin/api-test', icon: TestTube },
+  { title: 'Developers', url: '/admin/developers', icon: Code },
 ];
 
 function AdminTopNav() {
