@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.justtcg-import]
 verify_jwt = false
+
+[functions.get-card-pricing]
+verify_jwt = false
