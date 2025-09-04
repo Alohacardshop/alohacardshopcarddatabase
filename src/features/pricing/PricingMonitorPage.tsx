@@ -70,8 +70,29 @@ export function PricingMonitorPage() {
 
   const fetchApiStats = useCallback(async () => {
     try {
-      // Skip API stats until pricing_api_usage table is created via migration
-      console.log('API stats feature pending database migration');
+      const { data, error } = await supabase
+        .from('pricing_api_usage')
+        .select('*')
+        .gte('recorded_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+      if (!error && data) {
+        const totalRequests = data.length;
+        const successfulRequests = data.filter((r: any) => r.success).length;
+        const avgResponseTime = data.reduce((acc: number, r: any) => acc + (r.response_time_ms || 0), 0) / Math.max(totalRequests, 1);
+        const lastHour = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const requestsLastHour = data.filter((r: any) => r.recorded_at >= lastHour).length;
+        const errorsLastHour = data.filter((r: any) => r.recorded_at >= lastHour && !r.success).length;
+
+        setApiStats({
+          total_requests: totalRequests,
+          success_rate: totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 0,
+          avg_response_time: avgResponseTime,
+          requests_last_hour: requestsLastHour,
+          errors_last_hour: errorsLastHour
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching API stats:', error);
       setApiStats({
         total_requests: 0,
         success_rate: 0,
@@ -79,18 +100,22 @@ export function PricingMonitorPage() {
         requests_last_hour: 0,
         errors_last_hour: 0
       });
-    } catch (error) {
-      console.error('Error fetching API stats:', error);
     }
   }, []);
 
   const fetchPricingStats = useCallback(async () => {
     try {
-      // Skip pricing stats until pricing_stats_mv is created via migration
-      console.log('Pricing stats feature pending database migration');
-      setPricingStats(null);
+      const { data, error } = await supabase
+        .from('pricing_stats_mv')
+        .select('*')
+        .single();
+
+      if (!error && data) {
+        setPricingStats(data as PricingStats);
+      }
     } catch (error) {
       console.error('Error fetching pricing stats:', error);
+      setPricingStats(null);
     }
   }, []);
 
@@ -318,7 +343,7 @@ export function PricingMonitorPage() {
     fetchApiStats();
     fetchPricingStats();
     
-    // Set up real-time subscriptions (disabled until migration is run)
+    // Set up real-time subscriptions
     const jobsChannel = supabase
       .channel('pricing-jobs-changes')
       .on(
@@ -335,7 +360,21 @@ export function PricingMonitorPage() {
       )
       .subscribe();
 
-    // Note: API usage real-time subscription will be enabled after migration
+    const apiUsageChannel = supabase
+      .channel('api-usage-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'pricing_api_usage'
+        },
+        () => {
+          // Refresh API stats when new usage is recorded
+          fetchApiStats();
+        }
+      )
+      .subscribe();
     
     // Adaptive polling: faster when jobs are active
     const hasRunningOrCancelling = runningJobs > 0 || cancelling !== null;
@@ -350,6 +389,7 @@ export function PricingMonitorPage() {
     return () => {
       clearInterval(interval);
       supabase.removeChannel(jobsChannel);
+      supabase.removeChannel(apiUsageChannel);
     };
   }, [runningJobs, cancelling, fetchJobs, fetchApiStats, fetchPricingStats]);
 
@@ -494,7 +534,7 @@ export function PricingMonitorPage() {
         </div>
 
         {/* API Usage & Success Dashboard */}
-        {apiStats && apiStats.total_requests === 0 && (
+        {apiStats && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -502,16 +542,73 @@ export function PricingMonitorPage() {
                 API Usage & Success Metrics (24h)
               </CardTitle>
               <CardDescription>
-                Real-time monitoring of JustTCG API performance and usage patterns (pending database migration)
+                Real-time monitoring of JustTCG API performance and usage patterns
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="p-4 bg-muted/30 rounded-lg text-center">
-                <div className="text-sm text-muted-foreground">
-                  <BarChart3 className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                  API usage metrics will be available after running the database migration.
-                  <br />
-                  <span className="text-xs">This dashboard will track API requests, success rates, and performance in real-time.</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <StatCard
+                  title="Total Requests"
+                  value={apiStats.total_requests}
+                  icon={<Zap className="h-4 w-4 text-blue-500" />}
+                />
+                <StatCard
+                  title="Success Rate"
+                  value={`${Math.round(apiStats.success_rate)}%`}
+                  icon={<CheckCircle className="h-4 w-4 text-green-500" />}
+                />
+                <StatCard
+                  title="Avg Response"
+                  value={`${Math.round(apiStats.avg_response_time)}ms`}
+                  icon={<Clock className="h-4 w-4 text-orange-500" />}
+                />
+                <StatCard
+                  title="Requests/Hour"
+                  value={apiStats.requests_last_hour}
+                  icon={<Activity className="h-4 w-4 text-purple-500" />}
+                />
+                <StatCard
+                  title="Errors/Hour"
+                  value={apiStats.errors_last_hour}
+                  icon={<XCircle className="h-4 w-4 text-red-500" />}
+                />
+              </div>
+
+              <div className="mt-4 p-4 bg-muted/30 rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="font-medium mb-2">API Health Indicators:</div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        {apiStats.success_rate >= 95 ? 
+                          <CheckCircle className="h-3 w-3 text-green-500" /> : 
+                          <AlertTriangle className="h-3 w-3 text-orange-500" />
+                        }
+                        <span className="text-xs">Success Rate: {apiStats.success_rate >= 95 ? 'Excellent' : apiStats.success_rate >= 90 ? 'Good' : 'Poor'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {apiStats.avg_response_time <= 2000 ? 
+                          <CheckCircle className="h-3 w-3 text-green-500" /> : 
+                          <AlertTriangle className="h-3 w-3 text-orange-500" />
+                        }
+                        <span className="text-xs">Response Time: {apiStats.avg_response_time <= 2000 ? 'Fast' : 'Slow'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium mb-2">Current Status:</div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">
+                        Rate limit utilization: ~{Math.round((apiStats.requests_last_hour / 400) * 100)}% (400/hour max)
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Error rate: {apiStats.total_requests > 0 ? Math.round((apiStats.errors_last_hour / Math.max(apiStats.requests_last_hour, 1)) * 100) : 0}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Monthly usage: ~{Math.round((apiStats.total_requests * 30) / 1000)}K / 500K requests
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>

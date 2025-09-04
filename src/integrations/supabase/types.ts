@@ -166,6 +166,78 @@ export type Database = {
         }
         Relationships: []
       }
+      pricing_api_usage: {
+        Row: {
+          endpoint: string
+          error_message: string | null
+          id: string
+          job_run_id: string | null
+          recorded_at: string
+          response_time_ms: number | null
+          status_code: number
+          success: boolean
+        }
+        Insert: {
+          endpoint: string
+          error_message?: string | null
+          id?: string
+          job_run_id?: string | null
+          recorded_at?: string
+          response_time_ms?: number | null
+          status_code: number
+          success?: boolean
+        }
+        Update: {
+          endpoint?: string
+          error_message?: string | null
+          id?: string
+          job_run_id?: string | null
+          recorded_at?: string
+          response_time_ms?: number | null
+          status_code?: number
+          success?: boolean
+        }
+        Relationships: []
+      }
+      pricing_circuit_breaker: {
+        Row: {
+          created_at: string
+          failure_count: number
+          failure_threshold: number
+          game: string
+          id: string
+          last_failure_at: string | null
+          next_attempt_at: string | null
+          recovery_timeout_minutes: number
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          failure_count?: number
+          failure_threshold?: number
+          game: string
+          id?: string
+          last_failure_at?: string | null
+          next_attempt_at?: string | null
+          recovery_timeout_minutes?: number
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          failure_count?: number
+          failure_threshold?: number
+          game?: string
+          id?: string
+          last_failure_at?: string | null
+          next_attempt_at?: string | null
+          recovery_timeout_minutes?: number
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pricing_job_control: {
         Row: {
           cancel_requested: boolean
@@ -189,6 +261,134 @@ export type Database = {
           requested_by?: string | null
         }
         Relationships: []
+      }
+      pricing_job_queue: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          game: string
+          id: string
+          max_retries: number
+          priority: number
+          retry_count: number
+          scheduled_at: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          game: string
+          id?: string
+          max_retries?: number
+          priority?: number
+          retry_count?: number
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          game?: string
+          id?: string
+          max_retries?: number
+          priority?: number
+          retry_count?: number
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pricing_performance_metrics: {
+        Row: {
+          api_requests_used: number
+          batch_size_used: number
+          created_at: string
+          game: string
+          id: string
+          processing_time_seconds: number
+          recorded_date: string
+          success_rate: number
+          variants_processed: number
+          variants_updated: number
+        }
+        Insert: {
+          api_requests_used?: number
+          batch_size_used?: number
+          created_at?: string
+          game: string
+          id?: string
+          processing_time_seconds?: number
+          recorded_date?: string
+          success_rate?: number
+          variants_processed?: number
+          variants_updated?: number
+        }
+        Update: {
+          api_requests_used?: number
+          batch_size_used?: number
+          created_at?: string
+          game?: string
+          id?: string
+          processing_time_seconds?: number
+          recorded_date?: string
+          success_rate?: number
+          variants_processed?: number
+          variants_updated?: number
+        }
+        Relationships: []
+      }
+      pricing_variant_retries: {
+        Row: {
+          created_at: string
+          game: string
+          id: string
+          last_error: string | null
+          last_retry_at: string
+          max_retries: number
+          next_retry_at: string | null
+          retry_count: number
+          variant_id: string
+        }
+        Insert: {
+          created_at?: string
+          game: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string
+          max_retries?: number
+          next_retry_at?: string | null
+          retry_count?: number
+          variant_id: string
+        }
+        Update: {
+          created_at?: string
+          game?: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string
+          max_retries?: number
+          next_retry_at?: string | null
+          retry_count?: number
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_variant_retries_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "variants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sets: {
         Row: {
@@ -405,6 +605,15 @@ export type Database = {
         }
         Relationships: []
       }
+      pricing_stats_mv: {
+        Row: {
+          avg_duration_minutes: number | null
+          jobs_today: number | null
+          success_rate: number | null
+          variants_processed_today: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       cancel_stuck_pricing_jobs: {
@@ -420,6 +629,29 @@ export type Database = {
       catalog_v2_upsert_variants: {
         Args: { rows: Json }
         Returns: undefined
+      }
+      check_circuit_breaker: {
+        Args: { p_game: string }
+        Returns: {
+          can_proceed: boolean
+          state: string
+        }[]
+      }
+      complete_pricing_job: {
+        Args: { p_error_message?: string; p_job_id: string; p_status: string }
+        Returns: undefined
+      }
+      dequeue_next_pricing_job: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          game: string
+          id: string
+          retry_count: number
+        }[]
+      }
+      enqueue_pricing_job: {
+        Args: { p_game: string; p_priority?: number }
+        Returns: string
       }
       fetch_cards_with_variants: {
         Args: { p_game: string; p_limit?: number; p_offset?: number }
@@ -517,6 +749,18 @@ export type Database = {
       normalize_printing: {
         Args: { api_printing: string }
         Returns: Database["public"]["Enums"]["card_printing_enum"]
+      }
+      queue_variant_retry: {
+        Args: { p_error_message: string; p_game: string; p_variant_id: string }
+        Returns: undefined
+      }
+      record_circuit_breaker_result: {
+        Args: { p_game: string; p_success: boolean }
+        Returns: undefined
+      }
+      refresh_pricing_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       request_pricing_job_cancel: {
         Args: { p_job_id: string; p_reason?: string }
