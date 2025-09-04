@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle, Square, Trash2 } from "lucide-react";
+import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle, Square, Trash2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ export function PricingMonitorPage() {
   const [invoking, setInvoking] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState(false);
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<any>(null);
 
   const fetchJobs = async () => {
     try {
@@ -172,6 +174,33 @@ export function PricingMonitorPage() {
       toast.error('Failed to admin cancel job');
     } finally {
       setCancelling(null);
+    }
+  };
+
+  const checkApiHealth = async () => {
+    setHealthChecking(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('justtcg-health-check', {
+        body: {}
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to check API health');
+      }
+
+      setHealthStatus(data);
+      
+      if (data.success) {
+        toast.success('JustTCG API connection is healthy');
+      } else {
+        toast.error(data.message || 'API health check failed');
+      }
+    } catch (error) {
+      console.error('Error checking API health:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to check API health');
+      setHealthStatus({ success: false, error: 'check_failed', message: error.message });
+    } finally {
+      setHealthChecking(false);
     }
   };
 
@@ -332,6 +361,20 @@ export function PricingMonitorPage() {
           <Trash2 className="h-4 w-4" />
         )}
         Clean Stuck
+      </Button>
+      <Button
+        onClick={checkApiHealth}
+        disabled={healthChecking}
+        variant="outline"
+        size="sm"
+        className="gap-2"
+      >
+        {healthChecking ? (
+          <RefreshCw className="h-4 w-4 animate-spin" />
+        ) : (
+          <Settings className="h-4 w-4" />
+        )}
+        API Health
       </Button>
       <Button
         onClick={fetchJobs}
@@ -510,6 +553,87 @@ export function PricingMonitorPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* API Health Status */}
+        {healthStatus && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                API Configuration Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Overall Status:</span>
+                  <Badge variant={healthStatus.success ? "outline" : "destructive"} className={healthStatus.success ? "text-green-600 border-green-200 bg-green-50" : ""}>
+                    {healthStatus.success ? "Healthy" : "Error"}
+                  </Badge>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      {healthStatus.checks?.api_key_configured ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    <div className="text-xs text-muted-foreground">API Key</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      {healthStatus.checks?.api_connection ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    <div className="text-xs text-muted-foreground">Connection</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      {healthStatus.checks?.games_accessible ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    <div className="text-xs text-muted-foreground">Games API</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-1">
+                      {healthStatus.checks?.variants_accessible ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    <div className="text-xs text-muted-foreground">Variants API</div>
+                  </div>
+                </div>
+
+                {!healthStatus.success && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-800">{healthStatus.message}</p>
+                  </div>
+                )}
+
+                {healthStatus.games && (
+                  <div className="text-sm">
+                    <div className="font-medium mb-2">Available Games:</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {healthStatus.games.map((game: any) => (
+                        <div key={game.slug} className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${game.supported ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <span className="text-xs">{game.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recent Jobs */}
         <Card>
