@@ -58,7 +58,7 @@ async function fetchJustTcgVariants(
   offset: number = 0,
   limit: number = BATCH_SIZE
 ): Promise<JustTCGVariant[]> {
-  const maxRetries = 5;
+  const maxRetries = 3;
   let attempt = 0;
   
   const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
@@ -66,11 +66,13 @@ async function fetchJustTcgVariants(
   // Use the correct cards endpoint with game parameter (per official docs)
   const url = `${JTCG_BASE}/cards?game=${game}&limit=${limit}&offset=${offset}`;
   
-  console.log(`Fetching cards for game ${game}: ${url}`);
-  console.log(`Headers: X-API-Key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
+  console.log(`🔄 Fetching cards for game ${game}: ${url}`);
+  console.log(`🔑 API Key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
   
   while (attempt < maxRetries) {
     try {
+      console.log(`📞 API Call attempt ${attempt + 1}/${maxRetries}`);
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -81,45 +83,80 @@ async function fetchJustTcgVariants(
         }
       });
 
+      console.log(`📡 API Response: ${response.status} ${response.statusText}`);
+
       if (response.status === 429) {
         const backoffMs = Math.min(100 * Math.pow(2, attempt), 5000);
-        console.log(`Rate limited, backing off for ${backoffMs}ms (attempt ${attempt + 1})`);
+        console.log(`⏳ Rate limited, backing off for ${backoffMs}ms (attempt ${attempt + 1})`);
         await sleep(backoffMs);
         attempt++;
         continue;
       }
 
+      const responseText = await response.text();
+      console.log(`📄 Raw response (first 500 chars): ${responseText.slice(0, 500)}`);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`JustTCG variants non-200 ${response.status}:`, errorText.slice(0, 400));
+        console.error(`❌ JustTCG API error ${response.status}: ${responseText.slice(0, 400)}`);
         
         // For 401/403 errors, throw immediately - don't retry
         if (response.status === 401 || response.status === 403) {
-          throw new Error(`API authentication failed (${response.status}): ${errorText}`);
+          throw new Error(`API authentication failed (${response.status}): ${responseText}`);
         }
         
-        return [];
+        // For other errors, try next attempt
+        attempt++;
+        if (attempt >= maxRetries) {
+          return [];
+        }
+        continue;
       }
 
-      const raw = await response.json();
-      console.log(`API Response status: ${response.status}, keys:`, Object.keys(raw || {}));
-      console.log(`Raw response sample:`, JSON.stringify(raw).slice(0, 500));
+      let raw;
+      try {
+        raw = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error(`❌ JSON parse error: ${parseError}`);
+        console.error(`📄 Raw response that failed to parse: ${responseText}`);
+        return [];
+      }
+      
+      console.log(`📊 Response structure:`, {
+        keys: Object.keys(raw || {}),
+        dataType: Array.isArray(raw?.data) ? 'array' : typeof raw?.data,
+        dataLength: Array.isArray(raw?.data) ? raw.data.length : 'n/a'
+      });
       
       // Handle different response formats from JustTCG API
       let cards: any[] = [];
       
       if (raw?.data && Array.isArray(raw.data)) {
         cards = raw.data;
+        console.log(`✅ Found ${cards.length} cards in response.data`);
       } else if (Array.isArray(raw)) {
         cards = raw;
+        console.log(`✅ Found ${cards.length} cards in root array`);
       } else if (raw?.cards && Array.isArray(raw.cards)) {
         cards = raw.cards;
+        console.log(`✅ Found ${cards.length} cards in response.cards`);
       } else {
-        console.warn('Unexpected API response format:', Object.keys(raw || {}));
+        console.error('❌ Unexpected API response format:', {
+          hasData: !!raw?.data,
+          hasCards: !!raw?.cards,
+          isArray: Array.isArray(raw),
+          keys: Object.keys(raw || {}),
+          sample: JSON.stringify(raw).slice(0, 200)
+        });
         return [];
       }
       
-      console.log(`Received ${cards.length} cards from API`);
+      if (cards.length === 0) {
+        console.log(`⚠️ No cards returned from API for game: ${game}`);
+        return [];
+      }
+      
+      // Log sample card structure
+      console.log(`🃏 Sample card structure:`, JSON.stringify(cards[0], null, 2).slice(0, 500));
       
       // Flatten all variants from all cards
       const allVariants: JustTCGVariant[] = [];
@@ -146,21 +183,24 @@ async function fetchJustTcgVariants(
               });
             }
           }
+        } else {
+          console.log(`⚠️ Card has no variants array: ${card.name || card.id}`);
         }
       }
       
-      console.log(`Extracted ${allVariants.length} variants from ${cards.length} cards`);
+      console.log(`🎯 Extracted ${allVariants.length} variants from ${cards.length} cards`);
       
       // If no variants found, log the structure for debugging
       if (allVariants.length === 0 && cards.length > 0) {
-        console.log('No variants extracted. Sample card structure:', JSON.stringify(cards[0], null, 2));
+        console.error('❌ No variants extracted. Sample card structure:', JSON.stringify(cards[0], null, 2));
       }
       
       return allVariants;
+      
     } catch (error) {
-      console.error(`Attempt ${attempt + 1} failed:`, error);
+      console.error(`❌ Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxRetries - 1) {
-        console.warn('All JustTCG variants attempts failed');
+        console.error('💥 All JustTCG variants attempts failed');
         return [];
       }
       
