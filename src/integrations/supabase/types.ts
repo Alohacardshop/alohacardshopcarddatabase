@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_notifications: {
+        Row: {
+          alert_id: string
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string
+          percentage_change: number | null
+          price_new_cents: number | null
+          price_old_cents: number | null
+          user_id: string
+        }
+        Insert: {
+          alert_id: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message: string
+          percentage_change?: number | null
+          price_new_cents?: number | null
+          price_old_cents?: number | null
+          user_id: string
+        }
+        Update: {
+          alert_id?: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string
+          percentage_change?: number | null
+          price_new_cents?: number | null
+          price_old_cents?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_notifications_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "price_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cards: {
         Row: {
           cmc: number | null
@@ -100,6 +144,70 @@ export type Database = {
           },
         ]
       }
+      daily_price_snapshots: {
+        Row: {
+          avg_price_cents: number
+          card_id: string | null
+          created_at: string
+          id: string
+          market_price_cents: number | null
+          max_price_cents: number
+          min_price_cents: number
+          product_type: string
+          sealed_product_id: string | null
+          snapshot_date: string
+          variant_count: number | null
+        }
+        Insert: {
+          avg_price_cents: number
+          card_id?: string | null
+          created_at?: string
+          id?: string
+          market_price_cents?: number | null
+          max_price_cents: number
+          min_price_cents: number
+          product_type: string
+          sealed_product_id?: string | null
+          snapshot_date?: string
+          variant_count?: number | null
+        }
+        Update: {
+          avg_price_cents?: number
+          card_id?: string | null
+          created_at?: string
+          id?: string
+          market_price_cents?: number | null
+          max_price_cents?: number
+          min_price_cents?: number
+          product_type?: string
+          sealed_product_id?: string | null
+          snapshot_date?: string
+          variant_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_price_snapshots_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_price_snapshots_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "popular_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_price_snapshots_sealed_product_id_fkey"
+            columns: ["sealed_product_id"]
+            isOneToOne: false
+            referencedRelation: "sealed_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_configs: {
         Row: {
           created_at: string
@@ -165,6 +273,169 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      price_alerts: {
+        Row: {
+          alert_type: string
+          card_id: string | null
+          condition_filter: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          language_filter: string | null
+          last_triggered_at: string | null
+          percentage_threshold: number | null
+          product_type: string
+          sealed_product_id: string | null
+          target_price_cents: number | null
+          triggered_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          card_id?: string | null
+          condition_filter?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          language_filter?: string | null
+          last_triggered_at?: string | null
+          percentage_threshold?: number | null
+          product_type: string
+          sealed_product_id?: string | null
+          target_price_cents?: number | null
+          triggered_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          card_id?: string | null
+          condition_filter?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          language_filter?: string | null
+          last_triggered_at?: string | null
+          percentage_threshold?: number | null
+          product_type?: string
+          sealed_product_id?: string | null
+          target_price_cents?: number | null
+          triggered_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_alerts_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_alerts_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "popular_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_alerts_sealed_product_id_fkey"
+            columns: ["sealed_product_id"]
+            isOneToOne: false
+            referencedRelation: "sealed_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      price_history: {
+        Row: {
+          card_id: string | null
+          change_type: string | null
+          created_at: string
+          id: string
+          market_price_cents_new: number | null
+          market_price_cents_old: number | null
+          percentage_change: number | null
+          price_cents_new: number
+          price_cents_old: number | null
+          product_type: string
+          recorded_at: string
+          sealed_product_id: string | null
+          sealed_variant_id: string | null
+          variant_id: string | null
+        }
+        Insert: {
+          card_id?: string | null
+          change_type?: string | null
+          created_at?: string
+          id?: string
+          market_price_cents_new?: number | null
+          market_price_cents_old?: number | null
+          percentage_change?: number | null
+          price_cents_new: number
+          price_cents_old?: number | null
+          product_type: string
+          recorded_at?: string
+          sealed_product_id?: string | null
+          sealed_variant_id?: string | null
+          variant_id?: string | null
+        }
+        Update: {
+          card_id?: string | null
+          change_type?: string | null
+          created_at?: string
+          id?: string
+          market_price_cents_new?: number | null
+          market_price_cents_old?: number | null
+          percentage_change?: number | null
+          price_cents_new?: number
+          price_cents_old?: number | null
+          product_type?: string
+          recorded_at?: string
+          sealed_product_id?: string | null
+          sealed_variant_id?: string | null
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_history_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "popular_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_sealed_product_id_fkey"
+            columns: ["sealed_product_id"]
+            isOneToOne: false
+            referencedRelation: "sealed_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_sealed_variant_id_fkey"
+            columns: ["sealed_variant_id"]
+            isOneToOne: false
+            referencedRelation: "sealed_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "variants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pricing_api_usage: {
         Row: {
@@ -711,6 +982,20 @@ export type Database = {
         }
         Relationships: []
       }
+      market_intelligence: {
+        Row: {
+          base_price_cents: number | null
+          current_price_cents: number | null
+          game_name: string | null
+          id: string | null
+          name: string | null
+          opportunity_type: string | null
+          product_type: string | null
+          profit_margin_percentage: number | null
+          subcategory: string | null
+        }
+        Relationships: []
+      }
       popular_cards: {
         Row: {
           avg_price_cents: number | null
@@ -904,6 +1189,20 @@ export type Database = {
         Args: { p_game: string; p_success: boolean }
         Returns: undefined
       }
+      record_price_change: {
+        Args: {
+          p_card_id?: string
+          p_market_price_new?: number
+          p_market_price_old?: number
+          p_price_new: number
+          p_price_old?: number
+          p_product_type: string
+          p_sealed_product_id?: string
+          p_sealed_variant_id?: string
+          p_variant_id?: string
+        }
+        Returns: undefined
+      }
       refresh_pricing_stats: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -948,6 +1247,10 @@ export type Database = {
       trigger_test_pricing_batch: {
         Args: { p_game?: string; p_limit?: number }
         Returns: Json
+      }
+      update_daily_price_snapshots: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       update_pricing_job_progress: {
         Args: {

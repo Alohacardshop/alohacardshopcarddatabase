@@ -15,5 +15,8 @@ verify_jwt = false
 [functions.justtcg-refresh-variants]
 verify_jwt = false
 
-[functions.justtcg-sealed-sync]
+[functions.instant-price-check]
+verify_jwt = false
+
+[functions.price-tracker]
 verify_jwt = false

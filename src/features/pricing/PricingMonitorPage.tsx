@@ -9,6 +9,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SealedProductsTab } from "@/components/admin/SealedProductsTab";
+import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
