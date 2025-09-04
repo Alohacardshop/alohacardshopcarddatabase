@@ -6,8 +6,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 50; // Reduced to respect API limits
 const CEILING = 470;
+
+// Game mapping from UI names to API format
+const GAME_MAP: Record<string, string> = {
+  'pokemon': 'pokemon',
+  'Pokémon EN': 'pokemon',
+  'Pokémon JP': 'pokemon',
+  'Pokemon EN': 'pokemon', 
+  'Pokemon JP': 'pokemon',
+  'magic-the-gathering': 'magic-the-gathering',
+  'yugioh': 'yugioh',
+  'lorcana-tcg': 'lorcana-tcg',
+  'one-piece': 'one-piece',
+  'digimon': 'digimon',
+  'union-arena': 'union-arena'
+};
 
 interface JustTCGVariant {
   id: string;
@@ -88,30 +103,59 @@ async function fetchJustTcgVariants(
 
       const raw = await response.json();
       console.log(`API Response status: ${response.status}, keys:`, Object.keys(raw || {}));
+      console.log(`Raw response sample:`, JSON.stringify(raw).slice(0, 500));
       
-      // Extract cards from response
-      const cards = raw?.data || [];
+      // Handle different response formats from JustTCG API
+      let cards: any[] = [];
+      
+      if (raw?.data && Array.isArray(raw.data)) {
+        cards = raw.data;
+      } else if (Array.isArray(raw)) {
+        cards = raw;
+      } else if (raw?.cards && Array.isArray(raw.cards)) {
+        cards = raw.cards;
+      } else {
+        console.warn('Unexpected API response format:', Object.keys(raw || {}));
+        return [];
+      }
+      
       console.log(`Received ${cards.length} cards from API`);
       
       // Flatten all variants from all cards
       const allVariants: JustTCGVariant[] = [];
+      
       for (const card of cards) {
-        if (card.variants && Array.isArray(card.variants)) {
-          for (const variant of card.variants) {
-            // Add card info to variant for processing
-            allVariants.push({
-              ...variant,
-              cardId: card.id,
-              tcgplayerId: card.tcgplayerId,
-              cardName: card.name,
-              setName: card.set,
-              gameSlug: game
-            });
+        // Handle different card structures
+        const cardVariants = card.variants || card.prices || [card]; // Fallback to card itself if no variants
+        
+        if (Array.isArray(cardVariants)) {
+          for (const variant of cardVariants) {
+            // Ensure variant has required fields
+            if (variant && (variant.id || variant.variantId)) {
+              allVariants.push({
+                ...variant,
+                id: variant.id || variant.variantId || `${card.id || card.cardId}_${allVariants.length}`,
+                cardId: card.id || card.cardId || variant.cardId,
+                tcgplayerId: card.tcgplayerId || variant.tcgplayerId,
+                cardName: card.name || card.cardName || variant.cardName,
+                setName: card.set || card.setName || variant.setName,
+                gameSlug: game,
+                price: variant.price || variant.marketPrice,
+                condition: variant.condition || 'near_mint',
+                printing: variant.printing || variant.foil ? 'foil' : 'normal'
+              });
+            }
           }
         }
       }
       
       console.log(`Extracted ${allVariants.length} variants from ${cards.length} cards`);
+      
+      // If no variants found, log the structure for debugging
+      if (allVariants.length === 0 && cards.length > 0) {
+        console.log('No variants extracted. Sample card structure:', JSON.stringify(cards[0], null, 2));
+      }
+      
       return allVariants;
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
@@ -221,24 +265,32 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Accept game from POST body or URL params
-    let game = "";
+    let rawGame = "";
     if (req.method === 'POST') {
       try {
         const body = await req.json();
-        game = body.game || body.gameSlug || "";
+        rawGame = body.game || body.gameSlug || "";
       } catch {
         // Fallback to URL params
         const url = new URL(req.url);
-        game = url.searchParams.get("game") || "";
+        rawGame = url.searchParams.get("game") || "";
       }
     } else {
       const url = new URL(req.url);
-      game = url.searchParams.get("game") || "";
+      rawGame = url.searchParams.get("game") || "";
     }
+    
+    // Map game names to API format
+    const game = GAME_MAP[rawGame] || rawGame;
+    console.log(`Game mapping: "${rawGame}" -> "${game}"`);
     
     if (!["pokemon", "magic-the-gathering", "yugioh", "lorcana-tcg", "one-piece", "digimon", "union-arena"].includes(game)) {
       return new Response(
-        JSON.stringify({ success: false, error: "bad_game" }), 
+        JSON.stringify({ 
+          success: false, 
+          error: "bad_game",
+          message: `Unsupported game: ${rawGame}. Supported games: pokemon, magic-the-gathering, yugioh, lorcana-tcg, one-piece, digimon, union-arena`
+        }), 
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
