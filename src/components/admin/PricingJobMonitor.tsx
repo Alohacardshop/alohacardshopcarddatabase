@@ -128,111 +128,148 @@ export function PricingJobMonitor() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Pricing Job Monitor</CardTitle>
-          <CardDescription>Monitor nightly variant pricing refresh jobs</CardDescription>
-          <div className="flex gap-2">
-            <Button onClick={() => triggerPricingRefresh('pokemon')} size="sm">
+    <div className="space-y-4 lg:space-y-6">
+      <Card className="w-full">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg sm:text-xl">Pricing Job Monitor</CardTitle>
+          <CardDescription className="text-sm">Monitor nightly variant pricing refresh jobs</CardDescription>
+          
+          {/* Action Buttons - Responsive Layout */}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button 
+              onClick={() => triggerPricingRefresh('pokemon')} 
+              size="sm"
+              className="flex-1 sm:flex-none min-w-[120px]"
+            >
               Refresh Pokemon
             </Button>
-            <Button onClick={() => triggerPricingRefresh('pokemon-japan')} size="sm">
-              Refresh Pokemon Japan
+            <Button 
+              onClick={() => triggerPricingRefresh('pokemon-japan')} 
+              size="sm"
+              className="flex-1 sm:flex-none min-w-[140px]"
+            >
+              Refresh Pokemon JP
             </Button>
-            <Button onClick={() => triggerPricingRefresh('mtg')} size="sm">
+            <Button 
+              onClick={() => triggerPricingRefresh('mtg')} 
+              size="sm"
+              className="flex-1 sm:flex-none min-w-[100px]"
+            >
               Refresh MTG
             </Button>
-            <Button onClick={fetchJobs} variant="outline" size="sm">
+            <Button 
+              onClick={fetchJobs} 
+              variant="outline" 
+              size="sm"
+              className="flex-1 sm:flex-none min-w-[100px]"
+            >
               <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+              Refresh List
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        
+        <CardContent className="px-0 sm:px-6">
           {jobs.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              No pricing jobs found. Click a refresh button to start one.
-            </p>
+            <div className="text-center text-muted-foreground py-8 px-6">
+              <p className="text-sm sm:text-base">No pricing jobs found. Click a refresh button to start one.</p>
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Game</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Cards</TableHead>
-                  <TableHead>Variants</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Started</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="font-medium capitalize">
-                      {job.game.replace('-', ' ')}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(job.status)}
-                        {getStatusBadge(job.status)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {job.expected_batches > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                              style={{
-                                width: `${Math.min((job.actual_batches / job.expected_batches) * 100, 100)}%`
-                              }}
-                            />
+            /* Responsive Table Container */
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-[800px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[120px]">Game</TableHead>
+                      <TableHead className="w-[140px]">Status</TableHead>
+                      <TableHead className="w-[160px]">Progress</TableHead>
+                      <TableHead className="w-[80px] text-right">Cards</TableHead>
+                      <TableHead className="w-[80px] text-right">Variants</TableHead>
+                      <TableHead className="w-[80px]">Duration</TableHead>
+                      <TableHead className="w-[140px]">Started</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {jobs.map((job) => (
+                      <TableRow key={job.id}>
+                        <TableCell className="font-medium capitalize">
+                          {job.game.replace('-', ' ')}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(job.status)}
+                            {getStatusBadge(job.status)}
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            {job.actual_batches}/{job.expected_batches}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{job.cards_processed.toLocaleString()}</TableCell>
-                    <TableCell>{job.variants_updated.toLocaleString()}</TableCell>
-                    <TableCell>{formatDuration(job.started_at, job.finished_at)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(job.started_at).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell>
+                          {job.expected_batches > 0 ? (
+                            <div className="flex items-center gap-2 min-w-[140px]">
+                              <div className="flex-1 bg-gray-200 rounded-full h-2 min-w-[60px]">
+                                <div
+                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                  style={{
+                                    width: `${Math.min((job.actual_batches / job.expected_batches) * 100, 100)}%`
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {job.actual_batches}/{job.expected_batches}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {job.cards_processed.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {job.variants_updated.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {formatDuration(job.started_at, job.finished_at)}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(job.started_at).toLocaleString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
+      {/* Scheduled Jobs Card */}
+      <Card className="w-full">
         <CardHeader>
-          <CardTitle>Scheduled Jobs</CardTitle>
-          <CardDescription>Nightly cron jobs for automatic pricing updates</CardDescription>
+          <CardTitle className="text-lg sm:text-xl">Scheduled Jobs</CardTitle>
+          <CardDescription className="text-sm">Nightly cron jobs for automatic pricing updates</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold">Pokemon EN</h4>
-              <p className="text-sm text-muted-foreground">Daily at 00:00 UTC</p>
-              <p className="text-xs text-muted-foreground mt-1">~115 batches</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
+              <h4 className="font-semibold text-base">Pokemon EN</h4>
+              <p className="text-sm text-muted-foreground mt-1">Daily at 00:00 UTC</p>
+              <p className="text-xs text-muted-foreground mt-2 font-mono">~115 batches</p>
             </div>
-            <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold">Pokemon Japan</h4>
-              <p className="text-sm text-muted-foreground">Daily at 00:02 UTC</p>
-              <p className="text-xs text-muted-foreground mt-1">~74 batches</p>
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
+              <h4 className="font-semibold text-base">Pokemon Japan</h4>
+              <p className="text-sm text-muted-foreground mt-1">Daily at 00:02 UTC</p>
+              <p className="text-xs text-muted-foreground mt-2 font-mono">~74 batches</p>
             </div>
-            <div className="p-4 border rounded-lg">
-              <h4 className="font-semibold">Magic: The Gathering</h4>
-              <p className="text-sm text-muted-foreground">Daily at 00:04 UTC</p>
-              <p className="text-xs text-muted-foreground mt-1">~250 batches</p>
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors sm:col-span-2 lg:col-span-1">
+              <h4 className="font-semibold text-base">Magic: The Gathering</h4>
+              <p className="text-sm text-muted-foreground mt-1">Daily at 00:04 UTC</p>
+              <p className="text-xs text-muted-foreground mt-2 font-mono">~250 batches</p>
             </div>
           </div>
         </CardContent>
