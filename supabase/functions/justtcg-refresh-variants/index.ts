@@ -105,8 +105,21 @@ serve(async (req) => {
 
     const sb = createClient(supabaseUrl, supabaseServiceKey);
     
-    const url = new URL(req.url);
-    const game = url.searchParams.get("game") || "";
+    // Accept game from POST body or URL params
+    let game = "";
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        game = body.game || body.gameSlug || "";
+      } catch {
+        // Fallback to URL params
+        const url = new URL(req.url);
+        game = url.searchParams.get("game") || "";
+      }
+    } else {
+      const url = new URL(req.url);
+      game = url.searchParams.get("game") || "";
+    }
     
     if (!["pokemon", "pokemon-japan", "mtg"].includes(game)) {
       return new Response(
@@ -133,14 +146,16 @@ serve(async (req) => {
       );
     }
     
-    const totalCards = Number(cntRow || 0);
+    // Parse RPC result correctly
+    const totalCards = Array.isArray(cntRow) ? Number(cntRow[0]?.count || 0) : Number(cntRow || 0);
     const expectedBatches = Math.ceil(totalCards / PAGE);
 
     console.log(`Found ${totalCards} cards, expecting ${expectedBatches} batches`);
 
     // Log start
     const { data: runRow, error: runError } = await sb
-      .from("ops.pricing_job_runs")
+      .schema('ops')
+      .from("pricing_job_runs")
       .insert({ 
         game, 
         expected_batches: expectedBatches 
@@ -162,7 +177,8 @@ serve(async (req) => {
     // Preflight check
     if (expectedBatches > CEILING) {
       await sb
-        .from("ops.pricing_job_runs")
+        .schema('ops')
+        .from("pricing_job_runs")
         .update({ 
           status: "preflight_ceiling", 
           finished_at: new Date().toISOString() 
@@ -191,7 +207,8 @@ serve(async (req) => {
       try {
         // Fetch cards with variants for this batch
         const { data: cards, error: cardsError } = await sb
-          .from("catalog_v2.cards_with_variants")
+          .schema('catalog_v2')
+          .from("cards_with_variants")
           .select("card_id, variant_key, provider_variant_id, condition, printing, justtcg_card_id")
           .eq("game", game)
           .order("card_id", { ascending: true })
@@ -268,7 +285,7 @@ serve(async (req) => {
         // Update variants in public.variants table
         if (variantUpserts.length > 0) {
           const { error: variantError } = await sb
-            .from("public.variants")
+            .from("variants")
             .upsert(variantUpserts, { 
               onConflict: 'card_id,justtcg_variant_id' 
             });
@@ -283,7 +300,8 @@ serve(async (req) => {
         // Insert history
         if (historyInserts.length > 0) {
           const { error: historyError } = await sb
-            .from("catalog_v2.variant_price_history")
+            .schema('catalog_v2')
+            .from("variant_price_history")
             .insert(historyInserts);
 
           if (historyError) {
@@ -307,7 +325,8 @@ serve(async (req) => {
 
     // Update job status
     await sb
-      .from("ops.pricing_job_runs")
+      .schema('ops')
+      .from("pricing_job_runs")
       .update({
         status: "ok",
         actual_batches: actualBatches,

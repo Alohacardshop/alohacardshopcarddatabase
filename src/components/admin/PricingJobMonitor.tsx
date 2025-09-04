@@ -26,13 +26,20 @@ export function PricingJobMonitor() {
 
   const fetchJobs = async () => {
     try {
-      // For now, we'll show static info since the new tables aren't in types yet
-      // The actual job monitoring will work via the database directly
-      console.log('Job monitoring functionality is available via database queries');
-      setJobs([]);
+      // Use RPC to bypass schema restrictions since ops.pricing_job_runs isn't in types
+      const { data: jobsData, error } = await supabase.rpc('get_pricing_jobs_recent');
+
+      if (error) {
+        console.error('Error fetching pricing jobs:', error);
+        // Fallback to empty array for now
+        setJobs([]);
+      } else {
+        setJobs(jobsData || []);
+      }
     } catch (error) {
       console.error('Error fetching pricing jobs:', error);
       toast.error('Failed to fetch pricing jobs');
+      setJobs([]);
     } finally {
       setLoading(false);
     }
@@ -40,27 +47,19 @@ export function PricingJobMonitor() {
 
   const triggerPricingRefresh = async (game: string) => {
     try {
-      const response = await fetch(
-        `https://dhyvufggodqkcjbrjhxk.supabase.co/functions/v1/justtcg-refresh-variants?game=${game}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const { data, error } = await supabase.functions.invoke('justtcg-refresh-variants', {
+        body: { game }
+      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (error) {
+        throw error;
       }
-
-      const result = await response.json();
       
-      if (result.success) {
+      if (data?.success) {
         toast.success(`Pricing refresh started for ${game}`);
         setTimeout(fetchJobs, 1000); // Refresh after 1 second
       } else {
-        toast.error(result.error || 'Failed to start pricing refresh');
+        toast.error(data?.error || 'Failed to start pricing refresh');
       }
     } catch (error) {
       console.error('Error triggering pricing refresh:', error);
