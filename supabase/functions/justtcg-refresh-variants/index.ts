@@ -20,13 +20,26 @@ const GAME_MAP: Record<string, string> = {
   'Pokémon JP': 'pokemon-japan',
   'Pokemon EN': 'pokemon', 
   'Pokemon JP': 'pokemon-japan',
+  'mtg': 'magic-the-gathering',
+  'magic': 'magic-the-gathering',
   'magic-the-gathering': 'magic-the-gathering',
+  'Magic: The Gathering': 'magic-the-gathering',
   'yugioh': 'yugioh',
+  'yu-gi-oh': 'yugioh',
+  'YuGiOh': 'yugioh',
   'lorcana-tcg': 'lorcana-tcg',
   'one-piece': 'one-piece',
   'digimon': 'digimon',
   'union-arena': 'union-arena'
 };
+
+const ALLOWED_GAMES = [
+  'pokemon', 
+  'pokemon-japan', 
+  'mtg', 
+  'magic-the-gathering',
+  'yugioh'
+];
 
 interface JustTCGVariant {
   id: string;
@@ -201,12 +214,12 @@ serve(async (req) => {
     const game = GAME_MAP[rawGame] || rawGame;
     console.log(`Game mapping: "${rawGame}" -> "${game}"`);
     
-    if (!["pokemon", "pokemon-japan", "magic-the-gathering", "yugioh", "lorcana-tcg", "one-piece", "digimon", "union-arena"].includes(game)) {
+    if (!ALLOWED_GAMES.includes(game)) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           error: "bad_game",
-          message: `Unsupported game: ${rawGame}. Supported games: pokemon, pokemon-japan, magic-the-gathering, yugioh, lorcana-tcg, one-piece, digimon, union-arena`
+          message: `Unsupported game: ${rawGame}. Supported games: ${ALLOWED_GAMES.join(', ')}`
         }), 
         { 
           status: 400, 
