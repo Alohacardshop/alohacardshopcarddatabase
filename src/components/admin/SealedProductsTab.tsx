@@ -179,7 +179,6 @@ export function SealedProductsTab() {
             title="With Pricing"
             value={stats.products_with_pricing}
             icon={<DollarSign className="h-4 w-4" />}
-            description={`${Math.round((stats.products_with_pricing / stats.total_products) * 100)}% coverage`}
           />
           <StatCard
             title="Avg Price"

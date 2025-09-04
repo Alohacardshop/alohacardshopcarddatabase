@@ -36,10 +36,18 @@ interface ApiUsageStats {
 }
 
 interface PricingStats {
-  jobs_today: number;
-  success_rate: number;
-  avg_duration_minutes: number;
-  variants_processed_today: number;
+  total_cards: number;
+  cards_with_pricing: number;
+  avg_card_price_cents: number;
+  sets_with_pricing: number;
+  total_sealed_products: number;
+  sealed_with_pricing: number;
+  avg_sealed_price_cents: number;
+  total_jobs_last_30_days: number;
+  successful_jobs: number;
+  avg_job_duration_minutes: number;
+  success_rate_percentage: number;
+  last_updated: string;
 }
 
 interface SystemHealthCheck {
@@ -799,17 +807,17 @@ export function PricingMonitorPage() {
           />
           <StatCard
             title="Completed Today"
-            value={pricingStats?.jobs_today || completedJobs}
+            value={pricingStats?.total_jobs_last_30_days || completedJobs}
             icon={<CheckCircle className="h-4 w-4 text-green-500" />}
           />
           <StatCard
             title="Success Rate"
-            value={pricingStats ? `${Math.round(pricingStats.success_rate)}%` : `${Math.round((completedJobs / Math.max(jobs.length, 1)) * 100)}%`}
+            value={pricingStats ? `${Math.round(pricingStats.success_rate_percentage)}%` : `${Math.round((completedJobs / Math.max(jobs.length, 1)) * 100)}%`}
             icon={<TrendingUp className="h-4 w-4 text-green-500" />}
           />
           <StatCard
             title="Avg Duration"
-            value={pricingStats ? `${Math.round(pricingStats.avg_duration_minutes)}m` : `${Math.round(avgDuration / 60000)}m`}
+            value={pricingStats ? `${Math.round(pricingStats.avg_job_duration_minutes)}m` : `${Math.round(avgDuration / 60000)}m`}
             icon={<Clock className="h-4 w-4 text-gray-500" />}
           />
         </div>
