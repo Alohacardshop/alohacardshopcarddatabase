@@ -755,6 +755,10 @@ export type Database = {
         Args: { api_condition: string }
         Returns: Database["public"]["Enums"]["card_condition_enum"]
       }
+      normalize_magic_card_id: {
+        Args: { card_id: string }
+        Returns: string
+      }
       normalize_printing: {
         Args: { api_printing: string }
         Returns: Database["public"]["Enums"]["card_printing_enum"]
