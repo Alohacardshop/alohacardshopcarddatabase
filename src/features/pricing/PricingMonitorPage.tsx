@@ -13,10 +13,11 @@ import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { PricingJobMonitor } from "@/components/admin/PricingJobMonitor";
 import { SystemHealthTab } from "@/components/dashboard/SystemHealthTab";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
-import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
 import { EnhancedEmptyState } from "@/components/dashboard/EnhancedEmptyState";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { SyncEverythingSection } from "@/components/dashboard/SyncEverythingSection";
+import { EssentialMetrics } from "@/components/dashboard/EssentialMetrics";
+import { AdvancedMetrics } from "@/components/dashboard/AdvancedMetrics";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -302,11 +303,11 @@ function PricingMonitorPageContent() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Welcome Dashboard - Always visible */}
+        {/* Welcome Dashboard - Streamlined */}
         <WelcomeDashboard />
 
-        {/* Performance Metrics - Live dashboard */}
-        <PerformanceMetrics isLive={true} />
+        {/* Essential Metrics - Clean and focused */}
+        <EssentialMetrics />
 
         {/* Tabbed Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -332,6 +333,8 @@ function PricingMonitorPageContent() {
                 onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
                 onSyncSealed={handleSyncSealed}
               />
+
+              <AdvancedMetrics />
               
               <EnhancedEmptyState
                 type="general"

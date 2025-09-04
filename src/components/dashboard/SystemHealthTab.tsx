@@ -8,6 +8,7 @@ import { StatusBadge } from "./StatusBadge";
 import { CircularProgress } from "./CircularProgress";
 import { EnhancedDataTable } from "./EnhancedDataTable";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { PerformanceMetrics } from "./PerformanceMetrics";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -285,6 +286,19 @@ export function SystemHealthTab() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Detailed Performance Metrics */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detailed Performance Metrics</CardTitle>
+          <CardDescription>
+            Real-time performance data including response times, sync speeds, and success rates
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PerformanceMetrics isLive={true} />
+        </CardContent>
+      </Card>
 
       {/* Detailed Health Metrics */}
       <div className="grid gap-6 lg:grid-cols-2">
