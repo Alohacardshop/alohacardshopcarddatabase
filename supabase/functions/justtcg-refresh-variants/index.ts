@@ -74,6 +74,12 @@ async function fetchJustTcgVariants(
       if (!response.ok) {
         const errorText = await response.text();
         console.warn(`JustTCG variants non-200 ${response.status}:`, errorText.slice(0, 400));
+        
+        // For 401/403 errors, throw immediately - don't retry
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(`API authentication failed (${response.status}): ${errorText}`);
+        }
+        
         return [];
       }
 
@@ -160,7 +166,23 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const justTCGApiKey = Deno.env.get('JUSTTCG_API_KEY')!;
+    const justTCGApiKey = Deno.env.get('JUSTTCG_API_KEY');
+
+    // Fail-fast if API key is missing
+    if (!justTCGApiKey) {
+      console.error('JUSTTCG_API_KEY is not configured');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "missing_api_key",
+          message: "JustTCG API key is not configured. Please add the JUSTTCG_API_KEY secret." 
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     

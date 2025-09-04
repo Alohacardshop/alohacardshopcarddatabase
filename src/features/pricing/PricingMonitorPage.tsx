@@ -60,6 +60,19 @@ export function PricingMonitorPage() {
         throw new Error(error.message || 'Failed to trigger pricing refresh');
       }
 
+      // Check for specific error types in the response
+      if (data && !data.success) {
+        let errorMessage = `Failed to start pricing refresh for ${getGameDisplayName(game)}`;
+        
+        if (data.error === 'missing_api_key') {
+          errorMessage = 'JustTCG API key is not configured. Please check the edge function secrets.';
+        } else if (data.message) {
+          errorMessage = data.message;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
       toast.success(`Pricing refresh started for ${getGameDisplayName(game)}`);
       
       // Refresh the jobs list after a short delay
@@ -68,7 +81,7 @@ export function PricingMonitorPage() {
       }, 1000);
     } catch (error) {
       console.error('Error triggering pricing refresh:', error);
-      toast.error(`Failed to start pricing refresh for ${getGameDisplayName(game)}`);
+      toast.error(error instanceof Error ? error.message : `Failed to start pricing refresh for ${getGameDisplayName(game)}`);
     } finally {
       setInvoking(null);
     }
@@ -530,19 +543,20 @@ export function PricingMonitorPage() {
                 </div>
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Game</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Progress</TableHead>
-                        <TableHead>Batches</TableHead>
-                        <TableHead>Processed</TableHead>
-                        <TableHead>Updated</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead>Started</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                     <TableHeader>
+                       <TableRow>
+                         <TableHead>Game</TableHead>
+                         <TableHead>Status</TableHead>
+                         <TableHead>Progress</TableHead>
+                         <TableHead>Batches</TableHead>
+                         <TableHead>Processed</TableHead>
+                         <TableHead>Updated</TableHead>
+                         <TableHead>Duration</TableHead>
+                         <TableHead>Started</TableHead>
+                         <TableHead>Error</TableHead>
+                         <TableHead>Actions</TableHead>
+                       </TableRow>
+                     </TableHeader>
                     <TableBody>
                       {jobs.map((job) => (
                         <TableRow key={job.id}>
@@ -571,10 +585,23 @@ export function PricingMonitorPage() {
                           <TableCell>
                             {formatDuration(job.started_at, job.finished_at)}
                           </TableCell>
-                          <TableCell>
-                            {new Date(job.started_at).toLocaleString()}
-                          </TableCell>
-                          <TableCell>
+                           <TableCell>
+                             {new Date(job.started_at).toLocaleString()}
+                           </TableCell>
+                           <TableCell>
+                             {job.error ? (
+                               <div className="max-w-xs">
+                                 <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-xs">
+                                   {job.error.includes('API key') ? 'API Key Missing' : 
+                                    job.error.includes('authentication failed') ? 'Auth Failed' :
+                                    job.error.length > 30 ? `${job.error.substring(0, 30)}...` : job.error}
+                                 </Badge>
+                               </div>
+                             ) : (
+                               <span className="text-muted-foreground text-sm">-</span>
+                             )}
+                           </TableCell>
+                           <TableCell>
                             {job.status === 'running' && (
                               <div className="flex gap-2">
                                 <Button
