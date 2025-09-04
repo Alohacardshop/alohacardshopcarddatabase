@@ -1,8 +1,7 @@
 import { ReactNode } from "react";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/shell/AppHeader";
 import { AppSidebar } from "@/components/shell/AppSidebar";
-import { AppMain } from "@/components/shell/AppMain";
 
 interface AdminShellProps {
   children: ReactNode;
@@ -13,10 +12,12 @@ export function AdminShell({ children }: AdminShellProps) {
     <SidebarProvider defaultOpen>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <div className="flex-1 flex flex-col">
+        <SidebarInset>
           <AppHeader />
-          <AppMain>{children}</AppMain>
-        </div>
+          <main className="flex-1 overflow-y-auto p-6 bg-muted/30">
+            {children}
+          </main>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );

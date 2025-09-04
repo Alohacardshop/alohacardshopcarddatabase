@@ -1,20 +1,17 @@
-import { Search, Moon, Sun, User, Menu } from "lucide-react";
+import { Search, Moon, Sun, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useSidebar } from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "next-themes";
 
 export function AppHeader() {
-  const { toggleSidebar } = useSidebar();
   const { theme, setTheme } = useTheme();
 
   return (
     <header className="h-16 bg-background border-b border-border px-4 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={toggleSidebar} className="lg:hidden">
-          <Menu className="h-4 w-4" />
-        </Button>
+        <SidebarTrigger />
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-sm">A</span>

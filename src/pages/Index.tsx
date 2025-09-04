@@ -4,7 +4,7 @@ import { Shield, ArrowRight } from 'lucide-react';
 
 const Index = () => {
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 min-h-screen p-6">
       {/* Admin Access */}
       <div className="bg-card border rounded-lg p-6">
         <div className="flex items-center justify-between">
