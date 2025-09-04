@@ -12,21 +12,32 @@ const TIME_LIMIT_MS = 4.0 * 60 * 1000; // 4 minutes to stay safely under 5min li
 const MAX_REQUESTS_PER_MINUTE = 400; // Stay under your 500/min API limit (80% capacity)
 // VARIANT_LIMIT removed - process ALL variants that need updates
 
-// Game mapping from UI names to API format
-const GAME_MAP: Record<string, string> = {
+// Separate mappings for database queries vs JustTCG API calls
+const DB_GAME_MAP: Record<string, string> = {
   'pokemon': 'pokemon',
   'pokemon-japan': 'pokemon-japan',
   'Pokémon EN': 'pokemon',
   'Pokémon JP': 'pokemon-japan',
   'Pokemon EN': 'pokemon', 
   'Pokemon JP': 'pokemon-japan',
-  'mtg': 'magic-the-gathering',
-  'magic': 'magic-the-gathering',
-  'magic-the-gathering': 'magic-the-gathering',
-  'Magic: The Gathering': 'magic-the-gathering',
+  'mtg': 'mtg',  // Keep database game as-is
+  'magic': 'mtg',
+  'magic-the-gathering': 'mtg',
+  'Magic: The Gathering': 'mtg',
   'yugioh': 'yugioh',
   'yu-gi-oh': 'yugioh',
   'YuGiOh': 'yugioh',
+  'lorcana-tcg': 'lorcana-tcg',
+  'one-piece': 'one-piece',
+  'digimon': 'digimon',
+  'union-arena': 'union-arena'
+};
+
+const API_GAME_MAP: Record<string, string> = {
+  'mtg': 'magic-the-gathering',  // Map to JustTCG API format
+  'pokemon': 'pokemon',
+  'pokemon-japan': 'pokemon',
+  'yugioh': 'yugioh',
   'lorcana-tcg': 'lorcana-tcg',
   'one-piece': 'one-piece',
   'digimon': 'digimon',
@@ -210,11 +221,12 @@ serve(async (req) => {
       rawGame = url.searchParams.get("game") || "";
     }
     
-    // Map game names to API format
-    const game = GAME_MAP[rawGame] || rawGame;
-    console.log(`Game mapping: "${rawGame}" -> "${game}"`);
+    // Map game names - separate database and API mappings
+    const dbGame = DB_GAME_MAP[rawGame] || rawGame;  // For database queries
+    const apiGame = API_GAME_MAP[dbGame] || dbGame;  // For JustTCG API calls
+    console.log(`Game mapping: "${rawGame}" -> DB: "${dbGame}", API: "${apiGame}"`);
     
-    if (!ALLOWED_GAMES.includes(game)) {
+    if (!ALLOWED_GAMES.includes(dbGame) && !ALLOWED_GAMES.includes(rawGame)) {
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -228,30 +240,30 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Starting variant-based pricing refresh for game: ${game}`);
+    console.log(`Starting variant-based pricing refresh for game: ${dbGame} (API: ${apiGame})`);
 
     // Get cards for this specific game using RPC
-    console.log(`Fetching cards for game: ${game}...`);
+    console.log(`Fetching cards for game: ${dbGame}...`);
     
     const { data: gameCards, error: cardsError } = await supabase
       .rpc('fetch_cards_with_variants', { 
-        p_game: game, 
+        p_game: dbGame, 
         p_limit: 10000, // Get more cards initially to see actual scope
         p_offset: 0 
       });
 
     if (cardsError) {
       console.error('Failed to fetch game cards:', cardsError);
-      throw new Error(`Failed to fetch cards for game ${game}: ${cardsError.message}`);
+      throw new Error(`Failed to fetch cards for game ${dbGame}: ${cardsError.message}`);
     }
 
     if (!gameCards || gameCards.length === 0) {
-      console.log(`No cards found for game: ${game}`);
+      console.log(`No cards found for game: ${dbGame}`);
       return new Response(
         JSON.stringify({
           success: true,
-          game,
-          message: `No cards found for game: ${game}`,
+          game: dbGame,
+          message: `No cards found for game: ${dbGame}`,
           cardsFound: 0
         }),
         { 
@@ -261,7 +273,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Found ${gameCards.length} cards for game: ${game}`);
+    console.log(`Found ${gameCards.length} cards for game: ${dbGame}`);
 
     // Get card IDs for filtering variants
     const cardIds = gameCards.map(card => card.card_id);
@@ -282,11 +294,11 @@ serve(async (req) => {
     }
 
     if (!variants || variants.length === 0) {
-      console.log(`No variants found for game: ${game}`);
+      console.log(`No variants found for game: ${dbGame}`);
       return new Response(
         JSON.stringify({
           success: true,
-          game,
+          game: dbGame,
           message: 'No variants found to update',
           variantsProcessed: 0,
           variantsUpdated: 0
@@ -299,7 +311,7 @@ serve(async (req) => {
 
     // Start job run
     const { data: jobRunResult, error: jobRunError } = await supabase.rpc('start_pricing_job_run', {
-      p_game: game,
+      p_game: dbGame,
       p_expected_batches: Math.ceil(variants.length / BATCH_SIZE)
     });
 
@@ -365,7 +377,7 @@ serve(async (req) => {
           return new Response(JSON.stringify({ 
             success: true, 
             preflight_ceiling: true,
-            game, 
+            game: dbGame, 
             actualBatches: batchIndex, 
             totalFound: variants.length,
             cardsProcessed: totalProcessed, 
@@ -394,7 +406,7 @@ serve(async (req) => {
           return new Response(JSON.stringify({ 
             success: true, 
             cancelled: true,
-            game, 
+            game: dbGame, 
             actualBatches: batchIndex, 
             cardsProcessed: totalProcessed, 
             variantsUpdated: totalUpdated 
@@ -492,7 +504,7 @@ serve(async (req) => {
 
     const result = {
       success: true,
-      game,
+      game: dbGame,
       totalFound: variants.length,
       batchesProcessed: batches.length,
       variantsProcessed: totalProcessed,
