@@ -255,14 +255,12 @@ serve(async (req) => {
     // Query database for variants that need price updates (filtered by game cards)
     console.log(`Querying variants for ${cardIds.length} cards...`);
     
+    // Use RPC to avoid URL length limits when filtering by many card IDs
     const { data: variants, error: queryError } = await supabase
-      .from('variants')
-      .select('id, justtcg_variant_id, price_cents, last_updated, card_id')
-      .in('card_id', cardIds)
-      .not('justtcg_variant_id', 'is', null)
-      .lt('last_updated', new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Only variants not updated in last hour
-      .order('last_updated', { ascending: true })
-      .limit(VARIANT_LIMIT);
+      .rpc('get_variants_for_pricing_update', {
+        p_card_ids: cardIds,
+        p_limit: VARIANT_LIMIT
+      });
 
     if (queryError) {
       console.error('Database query failed:', queryError);
