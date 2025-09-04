@@ -93,7 +93,9 @@ export function AnalyticsTab() {
         ...movement,
         product_type: movement.product_type as 'card' | 'sealed',
         name: `Product ${movement.id}`,
-        game_name: 'Sample Game'
+        game_name: 'Sample Game',
+        price_old_cents: movement.price_cents_old,
+        price_new_cents: movement.price_cents_new
       })) || [];
 
       setTopMovers(transformedMovements);
