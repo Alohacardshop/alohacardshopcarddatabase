@@ -387,6 +387,10 @@ export type Database = {
           count: number
         }[]
       }
+      catalog_v2_upsert_variants: {
+        Args: { rows: Json }
+        Returns: undefined
+      }
       fetch_cards_with_variants: {
         Args: { p_game: string; p_limit?: number; p_offset?: number }
         Returns: {

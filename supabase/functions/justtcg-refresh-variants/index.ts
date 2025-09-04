@@ -6,63 +6,61 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 200;
+const BATCH_SIZE = 1000;
 const CEILING = 470;
-
-interface BatchRequest {
-  id: string;
-  printing?: string;
-  condition?: string;
-}
-
-interface JustTCGCard {
-  id: string;
-  cardId?: string;
-  variants?: JustTCGVariant[];
-  data?: JustTCGVariant[];
-}
 
 interface JustTCGVariant {
   id: string;
-  condition: string;
-  printing: string;
-  price?: number;
-  market?: number;
-  market_price?: number;
-  low_price?: number;
-  low?: number;
-  high_price?: number;
-  high?: number;
+  cardId: string;
+  language?: string;
+  printing?: string;
+  condition?: string;
+  sku?: string;
+  prices?: {
+    currency?: string;
+    latest?: number;
+    market?: number;
+    low?: number;
+    mid?: number;
+    high?: number;
+    updatedAt?: string;
+  };
+}
+
+interface JustTCGApiResponse {
+  data: JustTCGVariant[];
+  pagination?: {
+    offset: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  };
 }
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchJustTcgBatch(
-  cardIds: string[],
+async function fetchJustTcgVariants(
+  game: string,
   apiKey: string,
-  opts: { printing?: string; condition?: string } = {}
-): Promise<JustTCGCard[]> {
+  offset: number = 0,
+  limit: number = BATCH_SIZE
+): Promise<JustTCGVariant[]> {
   const maxRetries = 5;
   let attempt = 0;
   
-  // Build request body as array of objects with id, printing, condition
-  const body: BatchRequest[] = cardIds.map(id => ({
-    id,
-    printing: opts.printing ?? 'normal',
-    condition: opts.condition ?? 'near_mint'
-  }));
+  const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
+  const url = `${JTCG_BASE}/variants?game=${game}&limit=${limit}&offset=${offset}`;
   
   while (attempt < maxRetries) {
     try {
-      const response = await fetch('https://api.justtcg.com/cards/batch', {
-        method: 'POST',
+      const response = await fetch(url, {
+        method: 'GET',
         headers: {
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
-        body: JSON.stringify(body)
+        }
       });
 
       if (response.status === 429) {
@@ -75,25 +73,17 @@ async function fetchJustTcgBatch(
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(`JustTCG batch non-200 ${response.status}:`, errorText.slice(0, 400));
+        console.warn(`JustTCG variants non-200 ${response.status}:`, errorText.slice(0, 400));
         return [];
       }
 
-      const raw = await response.json().catch(() => ({}));
+      const apiResponse: JustTCGApiResponse = await response.json();
+      return apiResponse.data || [];
       
-      // Handle both direct array and { data: [...] } response formats
-      const data = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
-      
-      if (!Array.isArray(data)) {
-        console.warn('Unexpected JustTCG payload shape:', JSON.stringify(raw).slice(0, 400));
-        return [];
-      }
-      
-      return data as JustTCGCard[];
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxRetries - 1) {
-        console.warn('All JustTCG batch attempts failed');
+        console.warn('All JustTCG variants attempts failed');
         return [];
       }
       
@@ -106,82 +96,57 @@ async function fetchJustTcgBatch(
   return [];
 }
 
-function mapVariantRow(card: JustTCGCard, variant: JustTCGVariant, cardId: string) {
-  const toCents = (value: any) => Math.round((Number(value) || 0) * 100);
-  
+function mapVariantToRow(game: string, variant: JustTCGVariant) {
   return {
-    card_id: cardId,
-    justtcg_variant_id: variant.id,
-    condition: String(variant.condition || 'near_mint').toLowerCase(),
-    printing: String(variant.printing || 'normal').toLowerCase(),
-    price_cents: toCents(variant.price),
-    market_price_cents: toCents(variant.market ?? variant.market_price ?? variant.price),
-    low_price_cents: toCents(variant.low ?? variant.low_price),
-    high_price_cents: toCents(variant.high ?? variant.high_price),
-    last_updated: new Date().toISOString()
+    provider: 'justtcg',
+    game,
+    card_provider_id: variant.cardId,
+    variant_provider_id: variant.id,
+    language: variant.language || null,
+    printing: variant.printing || null,
+    condition: variant.condition || null,
+    sku: variant.sku || null,
+    currency: variant.prices?.currency || 'USD',
+    price: variant.prices?.latest?.toString() || null,
+    market_price: variant.prices?.market?.toString() || null,
+    low_price: variant.prices?.low?.toString() || null,
+    mid_price: variant.prices?.mid?.toString() || null,
+    high_price: variant.prices?.high?.toString() || null,
+    data: { raw: variant },
+    updated_from_source_at: variant.prices?.updatedAt || new Date().toISOString()
   };
 }
 
-async function writeBatchToDb(supabase: any, cardPayload: JustTCGCard[], cardIdMap: Map<string, string>) {
+async function writeBatchToDb(supabase: any, game: string, variants: JustTCGVariant[]) {
   let variantsUpdated = 0;
-  let cardsProcessed = 0;
-  const historyRecords = [];
   
-  for (const card of cardPayload) {
-    const cardId = cardIdMap.get(card.id || card.cardId || '');
-    if (!cardId) continue;
+  if (variants.length === 0) {
+    return { variantsUpdated: 0, cardsProcessed: 0 };
+  }
+  
+  // Map variants to database format
+  const rows = variants.map(variant => mapVariantToRow(game, variant));
+  
+  // Upsert variants in chunks of 500
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
     
-    // Get variants from either variants or data array
-    const variants = Array.isArray(card.variants) ? card.variants : 
-                    (Array.isArray(card.data) ? card.data : []);
-    
-    if (variants.length === 0) {
-      cardsProcessed++;
-      continue;
-    }
-    
-    // Map variants to database format
-    const variantRows = variants.map(v => mapVariantRow(card, v, cardId));
-    
-    // Upsert variants using our new RPC
-    if (variantRows.length > 0) {
-      const { data: upCount, error: upErr } = await supabase.rpc('upsert_variants_from_justtcg', {
-        p_rows: variantRows
+    try {
+      const { error } = await supabase.rpc('catalog_v2_upsert_variants', { 
+        rows: chunk 
       });
       
-      if (upErr) {
-        console.warn('Variant upsert error:', upErr);
+      if (error) {
+        console.warn('Variant upsert error:', error);
       } else {
-        variantsUpdated += Number(upCount ?? 0);
+        variantsUpdated += chunk.length;
       }
-      
-      // Build price history records
-      for (const row of variantRows) {
-        historyRecords.push({
-          variant_id: row.justtcg_variant_id, // RPC will map this internally
-          price_cents: row.price_cents,
-          low_price_cents: row.low_price_cents,
-          high_price_cents: row.high_price_cents,
-          market_price_cents: row.market_price_cents,
-          recorded_at: row.last_updated
-        });
-      }
-    }
-    
-    cardsProcessed++;
-  }
-  
-  // Insert price history
-  if (historyRecords.length > 0) {
-    const { error: histErr } = await supabase.rpc('insert_variant_price_history', {
-      p_records: historyRecords
-    });
-    if (histErr) {
-      console.warn('History insert error:', histErr);
+    } catch (err) {
+      console.error('Variant upsert failed:', err);
     }
   }
   
-  return { variantsUpdated, cardsProcessed };
+  return { variantsUpdated, cardsProcessed: variants.length };
 }
 
 serve(async (req) => {
@@ -227,49 +192,11 @@ serve(async (req) => {
 
     console.log(`Starting variant pricing refresh for game: ${game}`);
 
-    // Fetch all card IDs for this game
-    const allCardIds: string[] = [];
-    const cardIdMap = new Map<string, string>(); // justtcg_card_id -> card_id
-    
-    for (let offset = 0; ; offset += BATCH_SIZE) {
-      const { data: cardsData, error: cardsError } = await supabase.rpc('fetch_cards_with_variants', {
-        p_game: game,
-        p_limit: BATCH_SIZE,
-        p_offset: offset
-      });
-      
-      if (cardsError) {
-        console.error('Error fetching cards:', cardsError);
-        throw new Error(`Failed to fetch cards: ${cardsError.message}`);
-      }
-      
-      if (!cardsData || cardsData.length === 0) break;
-      
-      for (const card of cardsData) {
-        if (card.justtcg_card_id) {
-          allCardIds.push(card.justtcg_card_id);
-          cardIdMap.set(card.justtcg_card_id, card.card_id);
-        }
-      }
-      
-      if (cardsData.length < BATCH_SIZE) break;
-    }
-    
-    console.log(`Found ${allCardIds.length} cards with JustTCG IDs`);
-    
-    // Create batches for processing
-    const batches: string[][] = [];
-    for (let i = 0; i < allCardIds.length; i += BATCH_SIZE) {
-      batches.push(allCardIds.slice(i, i + BATCH_SIZE));
-    }
-    
-    const expectedBatches = batches.length;
-    console.log(`Expected ${expectedBatches} batches to process`);
-
-    // Start job run
+    // Start job run - we'll estimate batches based on pagination
+    let estimatedBatches = 50; // Initial estimate, will be adjusted
     const { data: jobRunResult, error: jobRunError } = await supabase.rpc('start_pricing_job_run', {
       p_game: game,
-      p_expected_batches: expectedBatches
+      p_expected_batches: estimatedBatches
     });
 
     if (jobRunError) {
@@ -279,35 +206,14 @@ serve(async (req) => {
 
     jobRunId = jobRunResult;
 
-    // Preflight check
-    if (expectedBatches > CEILING) {
-      await supabase.rpc('finish_pricing_job_run', {
-        p_job_id: jobRunId,
-        p_status: 'preflight_ceiling',
-        p_actual_batches: 0,
-        p_cards_processed: 0,
-        p_variants_updated: 0,
-        p_error: `Too many batches: ${expectedBatches} > ${CEILING}`
-      });
-        
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "preflight_ceiling", 
-          expectedBatches 
-        }), 
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
     let totalCardsProcessed = 0;
     let totalVariantsUpdated = 0;
+    let batchNumber = 0;
+    let offset = 0;
+    let hasMore = true;
 
-    // Process batches
-    for (let i = 0; i < batches.length; i++) {
+    // Process variants with pagination
+    while (hasMore) {
       let batchProcessed = 0;
       let batchUpdated = 0;
       
@@ -320,7 +226,7 @@ serve(async (req) => {
           await supabase.rpc('finish_pricing_job_run', {
             p_job_id: jobRunId,
             p_status: 'cancelled',
-            p_actual_batches: i,
+            p_actual_batches: batchNumber,
             p_cards_processed: totalCardsProcessed,
             p_variants_updated: totalVariantsUpdated,
             p_error: null
@@ -330,7 +236,7 @@ serve(async (req) => {
             success: true, 
             cancelled: true,
             game, 
-            actualBatches: i, 
+            actualBatches: batchNumber, 
             cardsProcessed: totalCardsProcessed, 
             variantsUpdated: totalVariantsUpdated 
           }), { 
@@ -339,23 +245,61 @@ serve(async (req) => {
           });
         }
 
-        console.log(`Processing batch ${i + 1}/${batches.length}: ${batches[i].length} cards`);
+        // Check ceiling
+        if (batchNumber >= CEILING) {
+          await supabase.rpc('finish_pricing_job_run', {
+            p_job_id: jobRunId,
+            p_status: 'preflight_ceiling',
+            p_actual_batches: batchNumber,
+            p_cards_processed: totalCardsProcessed,
+            p_variants_updated: totalVariantsUpdated,
+            p_error: `Too many batches: ${batchNumber} >= ${CEILING}`
+          });
+            
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: "preflight_ceiling", 
+              expectedBatches: batchNumber 
+            }), 
+            { 
+              status: 200, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
 
-        // Fetch pricing data from JustTCG
-        const justTcgCards = await fetchJustTcgBatch(batches[i], justTCGApiKey, {
-          printing: 'normal',
-          condition: 'near_mint'
-        });
+        console.log(`Processing batch ${batchNumber + 1}: fetching variants at offset ${offset}`);
+
+        // Fetch variants from JustTCG
+        const variants = await fetchJustTcgVariants(game, justTCGApiKey, offset, BATCH_SIZE);
+        
+        if (variants.length === 0) {
+          hasMore = false;
+          break;
+        }
 
         // Write batch to database
-        const result = await writeBatchToDb(supabase, justTcgCards, cardIdMap);
+        const result = await writeBatchToDb(supabase, game, variants);
         batchProcessed = result.cardsProcessed;
         batchUpdated = result.variantsUpdated;
         
-        console.log(`Batch ${i + 1} complete: ${batchProcessed} cards, ${batchUpdated} variants`);
+        console.log(`Batch ${batchNumber + 1} complete: ${batchProcessed} variants processed, ${batchUpdated} variants updated`);
+        
+        // Update pagination
+        offset += BATCH_SIZE;
+        batchNumber++;
+        
+        // If we got less than the batch size, we're done
+        if (variants.length < BATCH_SIZE) {
+          hasMore = false;
+        }
+        
       } catch (error) {
-        console.error(`Batch ${i + 1} error:`, error);
+        console.error(`Batch ${batchNumber + 1} error:`, error);
         // Continue with next batch
+        offset += BATCH_SIZE;
+        batchNumber++;
       } finally {
         // Always update progress
         totalCardsProcessed += batchProcessed;
@@ -363,7 +307,7 @@ serve(async (req) => {
         
         await supabase.rpc('update_pricing_job_progress', {
           p_job_id: jobRunId,
-          p_actual_batches: i + 1,
+          p_actual_batches: batchNumber,
           p_cards_processed: totalCardsProcessed,
           p_variants_updated: totalVariantsUpdated
         });
@@ -380,19 +324,19 @@ serve(async (req) => {
     await supabase.rpc('finish_pricing_job_run', {
       p_job_id: jobRunId,
       p_status: finalStatus,
-      p_actual_batches: batches.length,
+      p_actual_batches: batchNumber,
       p_cards_processed: totalCardsProcessed,
       p_variants_updated: totalVariantsUpdated,
       p_error: finalError
     });
 
-    console.log(`Pricing refresh ${finalStatus}: ${totalCardsProcessed} cards processed, ${totalVariantsUpdated} variants updated`);
+    console.log(`Pricing refresh ${finalStatus}: ${totalCardsProcessed} variants processed, ${totalVariantsUpdated} variants updated`);
 
     return new Response(JSON.stringify({ 
       success: true, 
       game, 
-      expectedBatches, 
-      actualBatches: batches.length, 
+      expectedBatches: batchNumber, 
+      actualBatches: batchNumber, 
       cardsProcessed: totalCardsProcessed, 
       variantsUpdated: totalVariantsUpdated 
     }), { 
