@@ -48,6 +48,8 @@ export function PricingMonitorPage() {
   const [healthStatus, setHealthStatus] = useState<any>(null);
   const [apiStats, setApiStats] = useState<ApiUsageStats | null>(null);
   const [pricingStats, setPricingStats] = useState<PricingStats | null>(null);
+  const [testingPricing, setTestingPricing] = useState(false);
+  const [cronJobs, setCronJobs] = useState<any[]>([]);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -118,6 +120,49 @@ export function PricingMonitorPage() {
       setPricingStats(null);
     }
   }, []);
+
+  const fetchCronJobs = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_cron_jobs_status');
+      if (error) throw error;
+      setCronJobs(data || []);
+    } catch (error) {
+      console.error('Error fetching cron jobs:', error);
+      setCronJobs([]);
+    }
+  }, []);
+
+  const runTestPricing = async (game: string = 'mtg') => {
+    if (testingPricing) return;
+    
+    setTestingPricing(true);
+    try {
+      const { data, error } = await supabase.rpc('trigger_test_pricing_batch', {
+        p_game: game,
+        p_limit: 10
+      });
+      
+      if (error) throw error;
+      
+      const result = data as any;
+      if (result.success) {
+        toast.success(`Test pricing job started for ${getGameDisplayName(game)} (10 items)`);
+        
+        // Refresh data after a brief delay
+        setTimeout(() => {
+          fetchJobs();
+          fetchApiStats();
+        }, 1000);
+      } else {
+        throw new Error(result.error || 'Failed to start test job');
+      }
+    } catch (error) {
+      console.error('Error running test pricing:', error);
+      toast.error(error instanceof Error ? error.message : "Failed to start test pricing");
+    } finally {
+      setTestingPricing(false);
+    }
+  };
 
   const triggerPricingRefresh = async (game: string) => {
     setInvoking(game);
@@ -342,6 +387,7 @@ export function PricingMonitorPage() {
     fetchJobs();
     fetchApiStats();
     fetchPricingStats();
+    fetchCronJobs();
     
     // Set up real-time subscriptions
     const jobsChannel = supabase
@@ -384,6 +430,7 @@ export function PricingMonitorPage() {
       fetchJobs();
       fetchApiStats();
       fetchPricingStats();
+      fetchCronJobs();
     }, pollInterval);
 
     return () => {
@@ -488,15 +535,29 @@ export function PricingMonitorPage() {
         )}
         API Health
       </Button>
-      <Button
-        onClick={fetchJobs}
-        variant="outline"
-        size="sm"
-        className="gap-2"
-      >
-        <RefreshCw className="h-4 w-4" />
-        Refresh
-      </Button>
+        <Button
+          onClick={fetchJobs}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
+        <Button
+          onClick={() => runTestPricing('mtg')}
+          disabled={testingPricing}
+          variant="secondary"
+          size="sm"
+          className="gap-2"
+        >
+          {testingPricing ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Zap className="h-4 w-4" />
+          )}
+          Test Run (10 items)
+        </Button>
     </div>
   );
 
@@ -614,6 +675,62 @@ export function PricingMonitorPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Cron Jobs Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Automated Scheduling Status
+            </CardTitle>
+            <CardDescription>
+              Current status of enabled cron jobs for automated pricing updates
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {cronJobs.length > 0 ? (
+              <div className="space-y-3">
+                {cronJobs.map((job, index) => (
+                  <div key={job.job_id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${job.active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      <div>
+                        <div className="font-medium text-sm">{job.job_name}</div>
+                        <div className="text-xs text-muted-foreground">Schedule: {job.schedule}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={job.active ? "outline" : "secondary"} className={job.active ? "text-green-600 border-green-200 bg-green-50" : ""}>
+                        {job.active ? "Active" : "Inactive"}
+                      </Badge>
+                      <div className="text-xs text-muted-foreground mt-1">ID: {job.job_id}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-muted-foreground">
+                <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No automated cron jobs found</p>
+                <p className="text-xs">Cron jobs may need to be enabled via migration</p>
+              </div>
+            )}
+            
+            <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+              <div className="text-sm">
+                <div className="font-medium mb-2 flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  Enabled Schedules:
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  <div>• Pokémon EN: Daily at 2:00 AM UTC</div>
+                  <div>• Pokémon JP: Daily at 3:00 AM UTC</div>
+                  <div>• MTG: Daily at 4:00 AM UTC</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Scheduled Jobs */}
         <Card>
