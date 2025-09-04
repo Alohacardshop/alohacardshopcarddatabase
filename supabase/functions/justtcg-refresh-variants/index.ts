@@ -7,12 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Enhanced configuration constants for 500K/month API limits
-const BATCH_SIZE = 150; // Optimized for 500K/month = ~16K/day budget
+// 🚀 OPTIMIZED: JustTCG Enterprise plan configuration
+const BATCH_SIZE = 200; // Increased from 150 to Enterprise limit
 const TIME_LIMIT_MS = 4.5 * 60 * 1000; // 4.5 minutes to stay under 5min limit
-const MAX_REQUESTS_PER_MINUTE = 400; // Stay under 500/min API limit (80% capacity)
+const MAX_REQUESTS_PER_MINUTE = 400; // 80% of 500/min Enterprise limit
+const DAILY_LIMIT = 40000; // 80% of 50K daily Enterprise limit
 const CIRCUIT_BREAKER_THRESHOLD = 5; // Open circuit after 5 consecutive failures
 const CIRCUIT_BREAKER_TIMEOUT = 30; // Minutes to wait before retry
+
+// 🎯 OPTIMIZED: Default filtering for fastest lookups
+const DEFAULT_CONDITION = "Near Mint"; // Focus on Near Mint condition
+const DEFAULT_PRINTING = "Normal"; // Focus on Normal printing
 
 interface JustTCGVariant {
   id: string;
@@ -22,6 +27,7 @@ interface JustTCGVariant {
   lastUpdated?: number;
   condition?: string;
   printing?: string;
+  tcgplayerId?: string; // Added for optimized lookups
 }
 
 interface JobProgress {
@@ -35,6 +41,7 @@ interface JobProgress {
   elapsedTimeMs: number;
   retryAttempts: number;
   circuitBreakerTripped: boolean;
+  dailyRequestsUsed: number; // NEW: Track daily usage
 }
 
 interface CircuitBreakerStatus {
@@ -42,11 +49,49 @@ interface CircuitBreakerStatus {
   can_proceed: boolean;
 }
 
+// 📊 NEW: Enhanced variant lookup with priority optimization
+interface OptimizedVariantRequest {
+  variantId?: string;     // 1st priority: fastest lookup
+  tcgplayerId?: string;   // 2nd priority: fast lookup  
+  cardId?: string;        // 3rd priority: moderate lookup
+  searchQuery?: string;   // 4th priority: slowest lookup
+  condition?: string;     // Default to Near Mint
+  printing?: string;      // Default to Normal
+}
+
 /**
  * Sleep utility for rate limiting and backoff
  */
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 🆕 Check daily API usage limit (Enterprise plan: 50K/day, using 40K limit)
+ */
+async function checkDailyUsage(supabase: any): Promise<number> {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const { data, error } = await supabase
+      .from('pricing_api_usage')
+      .select('*', { count: 'exact', head: true })
+      .gte('recorded_at', todayStart.toISOString());
+      
+    if (error) {
+      console.error('Error checking daily usage:', error);
+      return 0;
+    }
+    
+    const dailyCount = data?.length || 0;
+    console.log(`📊 Daily API usage: ${dailyCount}/${DAILY_LIMIT} requests`);
+    
+    return dailyCount;
+  } catch (error) {
+    console.error('Exception checking daily usage:', error);
+    return 0;
+  }
 }
 
 /**
@@ -115,10 +160,48 @@ async function recordCircuitBreakerResult(supabase: any, game: string, success: 
 }
 
 /**
- * Enhanced API call with comprehensive error handling and retry logic
+ * 🚀 OPTIMIZED: Create optimized variant requests with priority-based lookups
+ */
+function createOptimizedRequests(variants: any[]): OptimizedVariantRequest[] {
+  return variants.map(variant => {
+    const request: OptimizedVariantRequest = {
+      condition: DEFAULT_CONDITION,
+      printing: DEFAULT_PRINTING
+    };
+    
+    // Priority 1: Use variantId if available (fastest lookup)
+    if (variant.justtcg_variant_id) {
+      request.variantId = variant.justtcg_variant_id;
+      return request;
+    }
+    
+    // Priority 2: Use tcgplayerId if available (fast lookup)
+    if (variant.tcgplayer_id) {
+      request.tcgplayerId = variant.tcgplayer_id;
+      return request;
+    }
+    
+    // Priority 3: Use cardId (moderate speed)
+    if (variant.card_id) {
+      request.cardId = variant.card_id;
+      return request;
+    }
+    
+    // Priority 4: Fallback to search query (slowest)
+    if (variant.name) {
+      request.searchQuery = variant.name;
+      return request;
+    }
+    
+    return request;
+  });
+}
+
+/**
+ * 🚀 OPTIMIZED: Enhanced API call with priority-based lookups and Enterprise limits
  */
 async function fetchVariantPricing(
-  variantIds: string[],
+  variants: any[],
   apiKey: string,
   supabase: any,
   jobRunId: string,
@@ -130,9 +213,11 @@ async function fetchVariantPricing(
   const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
   const url = `${JTCG_BASE}/cards`;
   
-  const requestBody = variantIds.map(id => ({ variantId: id }));
+  // 🎯 OPTIMIZED: Create priority-based requests
+  const requestBody = createOptimizedRequests(variants);
   
-  console.log(`🔄 Fetching pricing for ${variantIds.length} variants (attempt 1/${maxRetries})`);
+  console.log(`🔄 Fetching pricing for ${variants.length} variants using optimized lookups (attempt 1/${maxRetries})`);
+  console.log(`🎯 Lookup distribution: variantId=${requestBody.filter(r => r.variantId).length}, tcgplayerId=${requestBody.filter(r => r.tcgplayerId).length}, cardId=${requestBody.filter(r => r.cardId).length}, search=${requestBody.filter(r => r.searchQuery).length}`);
   
   while (attempt < maxRetries) {
     const apiStartTime = Date.now();
@@ -150,7 +235,11 @@ async function fetchVariantPricing(
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          requests: requestBody, // 🚀 OPTIMIZED: Send structured requests
+          defaultCondition: DEFAULT_CONDITION,
+          defaultPrinting: DEFAULT_PRINTING
+        })
       });
 
       statusCode = response.status;
@@ -221,7 +310,7 @@ async function fetchVariantPricing(
       const cards = parsedResponse?.data || [];
       console.log(`✅ Found ${cards.length} cards in API response`);
       
-      // Extract variants from cards
+      // Extract variants from cards with enhanced data
       const allVariants: JustTCGVariant[] = [];
       
       for (const card of cards) {
@@ -235,8 +324,9 @@ async function fetchVariantPricing(
               price: variant.price,
               priceChange24h: variant.priceChange24h,
               lastUpdated: variant.lastUpdated,
-              condition: variant.condition,
-              printing: variant.printing
+              condition: variant.condition || DEFAULT_CONDITION,
+              printing: variant.printing || DEFAULT_PRINTING,
+              tcgplayerId: variant.tcgplayerId || card.tcgplayerId
             });
           }
         }
@@ -307,19 +397,19 @@ async function queueVariantForRetry(
     await supabase.rpc('queue_variant_retry', {
       p_variant_id: variantId,
       p_game: game,
-      p_error_message: error
+      p_error_message: error.slice(0, 500)
     });
-  } catch (error) {
-    console.error('⚠️ Failed to queue variant retry:', error);
+  } catch (retryError) {
+    console.error('⚠️ Failed to queue variant for retry:', retryError);
   }
 }
 
 /**
- * Process a single batch with comprehensive error handling
+ * Process a single batch of variants with enhanced error handling
  */
 async function processBatch(
   supabase: any,
-  batch: any[],
+  variants: any[],
   batchIndex: number,
   totalBatches: number,
   apiKey: string,
@@ -328,383 +418,371 @@ async function processBatch(
   game: string
 ): Promise<{ processed: number; updated: number; errors: number }> {
   
-  console.log(`🔄 Processing batch ${batchIndex + 1}/${totalBatches} (${batch.length} variants)`);
-  console.log(`📈 Overall progress: ${progress.processed}/${progress.totalFound} variants (${Math.round(progress.processed/progress.totalFound*100)}%)`);
-
-  // Extract variant IDs for API call
-  const variantIds = batch
-    .filter(v => v.justtcg_variant_id)
-    .map(v => v.justtcg_variant_id);
-
-  if (variantIds.length === 0) {
-    console.log(`⏭️ Skipping batch ${batchIndex + 1} - no valid variant IDs`);
-    return { processed: batch.length, updated: 0, errors: 0 };
-  }
-
-  // Fetch pricing data from JustTCG with enhanced error handling
-  progress.apiRequestsUsed++;
-  console.log(`🔄 API Request ${progress.apiRequestsUsed} - fetching ${variantIds.length} variants`);
+  console.log(`\n🔄 Processing batch ${batchIndex + 1}/${totalBatches} (${variants.length} variants)`);
   
-  const pricingData = await fetchVariantPricing(variantIds, apiKey, supabase, jobRunId, game);
-  console.log(`✅ JustTCG returned pricing for ${pricingData.length}/${variantIds.length} variants`);
-
-  // Update variants in database with retry queuing for failures
-  let batchUpdated = 0;
-  let batchErrors = 0;
+  let processed = 0;
+  let updated = 0;
+  let errors = 0;
   
-  for (const variantPricing of pricingData) {
-    const dbVariant = batch.find(v => v.justtcg_variant_id === variantPricing.id);
-    if (!dbVariant) continue;
-
-    try {
-      const { error: updateError } = await supabase
-        .from('variants')
-        .update({
-          price_cents: variantPricing.price ? Math.round(variantPricing.price * 100) : null,
-          market_price_cents: variantPricing.price ? Math.round(variantPricing.price * 100) : null,
-          last_updated: new Date().toISOString()
-        })
-        .eq('id', dbVariant.id);
-
-      if (updateError) {
-        console.error(`❌ Error updating variant ${dbVariant.id}:`, updateError);
-        await queueVariantForRetry(supabase, dbVariant.id, game, updateError.message);
-        batchErrors++;
-      } else {
-        batchUpdated++;
-        if (variantPricing.price) {
-          console.log(`💰 Updated variant ${variantPricing.id}: $${variantPricing.price.toFixed(2)}`);
-        }
+  try {
+    // Fetch pricing data using optimized lookups
+    const pricingData = await fetchVariantPricing(variants, apiKey, supabase, jobRunId, game);
+    progress.apiRequestsUsed++;
+    progress.dailyRequestsUsed++;
+    
+    console.log(`📊 Batch ${batchIndex + 1}: Found ${pricingData.length} pricing records`);
+    
+    if (pricingData.length === 0) {
+      console.log(`⚠️ No pricing data returned for batch ${batchIndex + 1}`);
+      processed = variants.length;
+      errors = variants.length;
+      return { processed, updated, errors };
+    }
+    
+    // Process pricing updates with better matching
+    const updateRecords = [];
+    
+    for (const variant of variants) {
+      processed++;
+      
+      // Find matching pricing data using multiple strategies
+      let matchedPricing = null;
+      
+      // Strategy 1: Match by justtcg_variant_id (most accurate)
+      if (variant.justtcg_variant_id) {
+        matchedPricing = pricingData.find(p => p.id === variant.justtcg_variant_id);
       }
-
-    } catch (updateException) {
-      console.error(`💥 Exception updating variant ${dbVariant.id}:`, updateException);
-      await queueVariantForRetry(supabase, dbVariant.id, game, String(updateException));
-      batchErrors++;
+      
+      // Strategy 2: Match by card relationship
+      if (!matchedPricing && variant.card_id) {
+        matchedPricing = pricingData.find(p => 
+          p.cardId === variant.card_id && 
+          (p.condition === DEFAULT_CONDITION || !p.condition) &&
+          (p.printing === DEFAULT_PRINTING || !p.printing)
+        );
+      }
+      
+      if (matchedPricing && matchedPricing.price !== undefined && matchedPricing.price !== null) {
+        const priceCents = Math.round((matchedPricing.price || 0) * 100);
+        
+        updateRecords.push({
+          card_id: variant.card_id,
+          justtcg_variant_id: matchedPricing.id,
+          condition: variant.condition,
+          printing: variant.printing,
+          price_cents: priceCents,
+          market_price_cents: matchedPricing.priceChange24h ? Math.round((matchedPricing.price + matchedPricing.priceChange24h) * 100) : priceCents,
+          low_price_cents: priceCents,
+          high_price_cents: priceCents,
+          last_updated: new Date().toISOString()
+        });
+        
+        updated++;
+      } else {
+        console.log(`⚠️ No pricing match found for variant ${variant.id}`);
+        await queueVariantForRetry(supabase, variant.id, game, 'No pricing data found');
+        errors++;
+      }
     }
-  }
-
-  // Queue variants that weren't returned by API for retry
-  const returnedIds = new Set(pricingData.map(p => p.id));
-  for (const variant of batch) {
-    if (variant.justtcg_variant_id && !returnedIds.has(variant.justtcg_variant_id)) {
-      await queueVariantForRetry(supabase, variant.id, game, 'No pricing data returned from API');
-      batchErrors++;
+    
+    // Bulk update variants
+    if (updateRecords.length > 0) {
+      console.log(`💾 Updating ${updateRecords.length} variants in database`);
+      
+      const { error: upsertError } = await supabase.rpc('upsert_variants_from_justtcg', {
+        p_rows: updateRecords
+      });
+      
+      if (upsertError) {
+        console.error(`❌ Database update failed for batch ${batchIndex + 1}:`, upsertError);
+        errors += updateRecords.length;
+        updated -= updateRecords.length;
+      } else {
+        console.log(`✅ Batch ${batchIndex + 1}: Successfully updated ${updateRecords.length} variants`);
+      }
     }
+    
+    console.log(`📋 Batch ${batchIndex + 1} summary: ${processed} processed, ${updated} updated, ${errors} errors`);
+    
+  } catch (batchError) {
+    console.error(`💥 Critical error in batch ${batchIndex + 1}:`, batchError);
+    
+    // Queue all variants in this batch for retry
+    for (const variant of variants) {
+      await queueVariantForRetry(supabase, variant.id, game, String(batchError));
+    }
+    
+    processed = variants.length;
+    errors = variants.length;
   }
-
-  return {
-    processed: batch.length,
-    updated: batchUpdated,
-    errors: batchErrors
-  };
+  
+  return { processed, updated, errors };
 }
 
 /**
- * Record daily performance metrics
+ * Record performance metrics for analytics
  */
 async function recordPerformanceMetrics(
   supabase: any,
   game: string,
   progress: JobProgress,
-  processingTimeSeconds: number
+  elapsedSeconds: number
 ): Promise<void> {
   try {
-    const successRate = progress.totalFound > 0 ? (progress.updated / progress.totalFound) * 100 : 0;
+    const successRate = progress.processed > 0 ? (progress.updated / progress.processed) * 100 : 0;
     
-    await supabase
+    const { error } = await supabase
       .from('pricing_performance_metrics')
       .upsert({
         game,
         variants_processed: progress.processed,
         variants_updated: progress.updated,
         api_requests_used: progress.apiRequestsUsed,
-        processing_time_seconds: processingTimeSeconds,
+        processing_time_seconds: elapsedSeconds,
         batch_size_used: BATCH_SIZE,
         success_rate: successRate,
-        recorded_date: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+        recorded_date: new Date().toISOString().split('T')[0]
       }, {
         onConflict: 'game,recorded_date'
       });
       
-    console.log(`📊 Recorded performance metrics for ${game}: ${successRate.toFixed(1)}% success rate`);
+    if (error) {
+      console.error('⚠️ Failed to record performance metrics:', error);
+    } else {
+      console.log(`📊 Performance metrics recorded: ${successRate.toFixed(1)}% success rate`);
+    }
   } catch (error) {
-    console.error('⚠️ Failed to record performance metrics:', error);
+    console.error('⚠️ Exception recording performance metrics:', error);
   }
 }
 
+// 🚀 ENHANCED PRICING REFRESH SERVERLESS FUNCTION
 serve(async (req) => {
-  // Handle CORS preflight
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log('🎯 Enhanced JustTCG pricing refresh started with Enterprise optimizations');
+  
   let jobRunId: string | null = null;
   let queueJobId: string | null = null;
   const startTime = Date.now();
 
   try {
-    // Initialize services
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const justTCGApiKey = Deno.env.get('JUSTTCG_API_KEY');
-
-    // Validate API key
-    if (!justTCGApiKey) {
-      console.error('❌ JUSTTCG_API_KEY is not configured');
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "missing_api_key",
-          message: "JustTCG API key is not configured. Please add the JUSTTCG_API_KEY secret." 
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase configuration');
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const gameService = new GameService(supabase);
-    
-    // Parse game parameter
-    let rawGame = "";
-    if (req.method === 'POST') {
-      try {
-        const body = await req.json();
-        rawGame = body.game || body.gameSlug || "";
-      } catch {
-        const url = new URL(req.url);
-        rawGame = url.searchParams.get("game") || "";
-      }
-    } else {
-      const url = new URL(req.url);
-      rawGame = url.searchParams.get("game") || "";
-    }
-    
-    if (!rawGame) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "missing_game",
-          message: "Game parameter is required" 
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+
+    // Get JustTCG API key
+    const justTCGApiKey = Deno.env.get('JUSTTCG_API_KEY');
+    if (!justTCGApiKey) {
+      throw new Error('JUSTTCG_API_KEY environment variable is required');
     }
 
-    // Use GameService to get game mapping
-    const gameMapping = await gameService.getGameMapping(rawGame);
+    // Parse game parameter
+    const { game: requestedGame, priority = 0, test_mode = false, test_limit } = await req.json();
+    
+    if (!requestedGame) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Game parameter is required' 
+      }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    console.log(`🎮 Processing pricing refresh for: ${requestedGame}`);
+    console.log(`🚀 Enterprise optimizations: BATCH_SIZE=${BATCH_SIZE}, MAX_REQUESTS_PER_MINUTE=${MAX_REQUESTS_PER_MINUTE}, DAILY_LIMIT=${DAILY_LIMIT}`);
+
+    // 🆕 Check daily usage limit before proceeding
+    const dailyUsage = await checkDailyUsage(supabase);
+    if (dailyUsage >= DAILY_LIMIT) {
+      console.log(`🚫 Daily limit reached: ${dailyUsage}/${DAILY_LIMIT} requests`);
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Daily API limit reached',
+        daily_usage: dailyUsage,
+        daily_limit: DAILY_LIMIT
+      }), { 
+        status: 429, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Initialize GameService and get mapping
+    const gameService = new GameService(supabase);
+    const gameMapping = await gameService.getGameMapping(requestedGame);
     
     if (!gameMapping) {
-      const supportedGames = await gameService.getSupportedGames();
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "unsupported_game",
-          message: `Unsupported game: ${rawGame}. Supported games: ${supportedGames.join(', ')}`
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    console.log(`🚀 Starting enhanced pricing refresh for ${gameMapping.displayName}`);
-
-    // **NEW: Job Queue Management - Prevent duplicate jobs**
-    try {
-      const { data: queueResult, error: queueError } = await supabase.rpc('enqueue_pricing_job', {
-        p_game: gameMapping.databaseSlug,
-        p_priority: 10 // High priority for manual runs
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Unsupported game: ${requestedGame}`,
+        supported_games: ['mtg', 'pokemon', 'pokemon-japan']
+      }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
-
-      if (queueError) {
-        throw new Error(`Failed to enqueue job: ${queueError.message}`);
-      }
-
-      queueJobId = queueResult;
-      console.log(`📋 Job queued with ID: ${queueJobId}`);
-
-      // Check if this is a duplicate job
-      const { data: existingQueue } = await supabase
-        .from('pricing_job_queue')
-        .select('status, started_at')
-        .eq('id', queueJobId)
-        .single();
-
-      if (existingQueue?.status === 'running') {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "duplicate_job",
-            message: `A pricing job for ${gameMapping.displayName} is already running`,
-            queue_id: queueJobId
-          }),
-          { 
-            status: 409, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-    } catch (queueingError) {
-      console.error('❌ Job queuing failed:', queueingError);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "queuing_failed",
-          message: `Failed to queue pricing job: ${queueingError.message}`
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
     }
 
-    // **NEW: Circuit Breaker Check**
-    const circuitStatus = await checkCircuitBreaker(supabase, gameMapping.databaseSlug);
-    
-    if (!circuitStatus.can_proceed) {
+    // Enqueue pricing job (prevents duplicate runs)
+    console.log(`🔄 Enqueuing pricing job for ${gameMapping.displayName}`);
+    const { data: queueData, error: queueError } = await supabase.rpc('enqueue_pricing_job', {
+      p_game: gameMapping.databaseSlug,
+      p_priority: priority
+    });
+
+    if (queueError) {
+      console.error('❌ Failed to enqueue pricing job:', queueError);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Failed to enqueue job: ${queueError.message}` 
+      }), { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
+    queueJobId = queueData;
+    console.log(`✅ Job queued with ID: ${queueJobId}`);
+
+    // Check circuit breaker status
+    const circuitBreakerStatus = await checkCircuitBreaker(supabase, gameMapping.databaseSlug);
+    if (!circuitBreakerStatus.can_proceed) {
+      console.log(`🚫 Circuit breaker is ${circuitBreakerStatus.state} for ${gameMapping.displayName}`);
+      
       await supabase.rpc('complete_pricing_job', {
         p_job_id: queueJobId,
         p_status: 'failed',
-        p_error_message: `Circuit breaker open for ${gameMapping.displayName} - too many recent failures`
+        p_error_message: `Circuit breaker ${circuitBreakerStatus.state} - too many recent failures`
       });
-
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "circuit_breaker_open",
-          message: `Circuit breaker is open for ${gameMapping.displayName} due to recent failures. Please wait before retrying.`,
-          circuit_state: circuitStatus.state
-        }),
-        { 
-          status: 503, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: `Circuit breaker ${circuitBreakerStatus.state}`,
+        message: 'Too many recent failures. System is temporarily protecting against further errors.'
+      }), { 
+        status: 503, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
 
-    // Fetch all cards for this game
-    console.log(`📋 Fetching cards for game: ${gameMapping.databaseSlug}...`);
+    // Fetch all cards and their stale variants for the specified game
+    console.log(`📊 Fetching cards and variants for ${gameMapping.displayName}...`);
     
-    const { data: gameCards, error: cardsError } = await supabase
-      .rpc('fetch_cards_with_variants', { 
-        p_game: gameMapping.databaseSlug, 
-        p_limit: 50000, // Large limit to get all cards
-        p_offset: 0 
-      });
+    const { data: cardsData, error: cardsError } = await supabase.rpc('fetch_cards_with_variants', {
+      p_game: gameMapping.databaseSlug,
+      p_limit: test_mode && test_limit ? test_limit : 10000,
+      p_offset: 0
+    });
 
     if (cardsError) {
-      console.error('❌ Failed to fetch game cards:', cardsError);
-      throw new Error(`Failed to fetch cards for game ${gameMapping.databaseSlug}: ${cardsError.message}`);
+      throw new Error(`Failed to fetch cards: ${cardsError.message}`);
     }
 
-    if (!gameCards || gameCards.length === 0) {
-      console.log(`⚠️ No cards found for game: ${gameMapping.databaseSlug}`);
+    if (!cardsData || cardsData.length === 0) {
+      console.log(`⚠️ No cards found for ${gameMapping.displayName}`);
       
       await supabase.rpc('complete_pricing_job', {
         p_job_id: queueJobId,
         p_status: 'completed',
         p_error_message: null
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          game: gameMapping.databaseSlug,
-          message: `No cards found for game: ${gameMapping.displayName}`,
-          cardsFound: 0
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: `No cards found for ${gameMapping.displayName}`,
+        totalFound: 0,
+        processed: 0,
+        updated: 0
+      }), { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
 
-    console.log(`📊 Found ${gameCards.length} cards for ${gameMapping.displayName}`);
+    const cardIds = cardsData.map((card: any) => card.card_id);
+    console.log(`🎯 Found ${cardIds.length} cards to process for ${gameMapping.displayName}`);
 
-    // Get ALL variants that need price updates (no limit)
-    const cardIds = gameCards.map(card => card.card_id);
-    console.log(`🔍 Querying ALL stale variants for ${cardIds.length} cards...`);
-    
-    const { data: variants, error: queryError } = await supabase
-      .rpc('get_variants_for_pricing_update', {
-        p_card_ids: cardIds
-        // No limit parameter - process ALL stale variants
-      });
+    // Get variants that need pricing updates (older than 1 hour)
+    const { data: variants, error: variantsError } = await supabase.rpc('get_variants_for_pricing_update', {
+      p_card_ids: cardIds
+    });
 
-    if (queryError) {
-      console.error('❌ Database query failed:', queryError);
-      throw new Error(`Database query failed: ${queryError.message}`);
+    if (variantsError) {
+      throw new Error(`Failed to fetch variants: ${variantsError.message}`);
     }
 
     if (!variants || variants.length === 0) {
-      console.log(`✅ No stale variants found for ${gameMapping.displayName}`);
+      console.log(`✅ All pricing data is fresh for ${gameMapping.displayName}`);
       
       await supabase.rpc('complete_pricing_job', {
         p_job_id: queueJobId,
         p_status: 'completed',
         p_error_message: null
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          game: gameMapping.databaseSlug,
-          message: 'No variants found needing updates - all pricing is current',
-          variantsProcessed: 0,
-          variantsUpdated: 0
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: `All pricing data is current for ${gameMapping.displayName}`,
+        totalFound: cardIds.length,
+        processed: 0,
+        updated: 0,
+        allCurrent: true
+      }), { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
 
-    console.log(`🎯 Found ${variants.length} stale variants to refresh`);
+    console.log(`⚡ Found ${variants.length} variants needing price updates`);
 
-    // Create pricing job run
-    const { data: jobRunResult, error: jobRunError } = await supabase.rpc('start_pricing_job_run', {
+    // 🆕 ENTERPRISE: Calculate expected batches with new batch size
+    const expectedBatches = Math.ceil(variants.length / BATCH_SIZE);
+    
+    // Start job run tracking
+    const { data: jobRunData, error: jobRunError } = await supabase.rpc('start_pricing_job_run', {
       p_game: gameMapping.databaseSlug,
-      p_expected_batches: Math.ceil(variants.length / BATCH_SIZE)
+      p_expected_batches: expectedBatches
     });
 
     if (jobRunError) {
-      console.error('❌ Error creating job run:', jobRunError);
-      throw new Error(`Failed to create job run: ${jobRunError.message}`);
+      throw new Error(`Failed to start job run: ${jobRunError.message}`);
     }
 
-    jobRunId = jobRunResult;
-    console.log(`📋 Started job run: ${jobRunId}`);
+    jobRunId = jobRunData;
+    console.log(`📊 Started job run ${jobRunId} with ${expectedBatches} expected batches`);
 
-    // Initialize enhanced progress tracking
+    // Initialize progress tracking
     const progress: JobProgress = {
       totalFound: variants.length,
       processed: 0,
       updated: 0,
       errors: 0,
       batchesCompleted: 0,
-      totalBatches: Math.ceil(variants.length / BATCH_SIZE),
+      totalBatches: expectedBatches,
       apiRequestsUsed: 0,
       elapsedTimeMs: 0,
       retryAttempts: 0,
-      circuitBreakerTripped: false
+      circuitBreakerTripped: false,
+      dailyRequestsUsed: dailyUsage // Track from current usage
     };
 
-    // Process variants in optimized batches
+    // 🚀 OPTIMIZED: Process variants in larger Enterprise-sized batches
     const batches = [];
     for (let i = 0; i < variants.length; i += BATCH_SIZE) {
       batches.push(variants.slice(i, i + BATCH_SIZE));
     }
 
-    console.log(`⚡ Processing ${batches.length} batches of up to ${BATCH_SIZE} variants each`);
-    console.log(`📊 Estimated API usage: ${batches.length} requests (Monthly budget: 500K requests)`);
+    console.log(`⚡ Processing ${batches.length} batches of up to ${BATCH_SIZE} variants each (Enterprise optimized)`);
+    console.log(`📊 Estimated API usage: ${batches.length} requests (Daily remaining: ${DAILY_LIMIT - dailyUsage})`);
 
     // Enhanced rate limiting tracking
     let requestCount = 0;
@@ -750,6 +828,32 @@ serve(async (req) => {
           });
         }
 
+        // 🆕 Check daily limit before each batch
+        if (progress.dailyRequestsUsed >= DAILY_LIMIT) {
+          console.log(`🚫 Daily limit would be exceeded: ${progress.dailyRequestsUsed}/${DAILY_LIMIT}`);
+          
+          await supabase.rpc('finish_pricing_job_run', {
+            p_job_id: jobRunId,
+            p_status: 'completed',
+            p_actual_batches: progress.batchesCompleted,
+            p_cards_processed: progress.processed,
+            p_variants_updated: progress.updated,
+            p_error: `Daily API limit reached: ${progress.dailyRequestsUsed}/${DAILY_LIMIT}`
+          });
+
+          return new Response(JSON.stringify({ 
+            success: true, 
+            daily_limit_reached: true,
+            game: gameMapping.databaseSlug,
+            processed: progress.processed,
+            updated: progress.updated,
+            daily_usage: progress.dailyRequestsUsed
+          }), { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          });
+        }
+
         // Check for job cancellation
         const { data: isCancelled } = await supabase.rpc('is_pricing_job_cancelled', { p_job_id: jobRunId });
         
@@ -784,7 +888,7 @@ serve(async (req) => {
           });
         }
 
-        // **NEW: Enhanced Rate Limiting** - reset counter every minute
+        // **ENHANCED Rate Limiting** - reset counter every minute
         const currentTime = Date.now();
         const timeInCurrentMinute = currentTime - minuteStartTime;
         
@@ -865,13 +969,13 @@ serve(async (req) => {
 
     const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
     
-    // **NEW: Record Performance Metrics**
+    // Record Performance Metrics
     await recordPerformanceMetrics(supabase, gameMapping.databaseSlug, progress, elapsedSeconds);
     
-    console.log(`🎉 Enhanced pricing refresh completed successfully in ${elapsedSeconds}s!`);
+    console.log(`🎉 Enterprise-optimized pricing refresh completed in ${elapsedSeconds}s!`);
     console.log(`📊 Final results: ${progress.updated}/${progress.processed} variants updated from ${progress.totalFound} found`);
-    console.log(`⚡ API efficiency: Used ${progress.apiRequestsUsed} requests (~${Math.round(progress.apiRequestsUsed/MAX_REQUESTS_PER_MINUTE*100)}% of rate limit)`);
-    console.log(`🔄 Retry attempts: ${progress.retryAttempts}, Circuit breaker status: ${progress.circuitBreakerTripped ? 'tripped' : 'stable'}`);
+    console.log(`⚡ API efficiency: Used ${progress.apiRequestsUsed} requests (Daily: ${progress.dailyRequestsUsed}/${DAILY_LIMIT})`);
+    console.log(`🚀 Enterprise optimizations: ${BATCH_SIZE} batch size, priority-based lookups, ${DEFAULT_CONDITION}+${DEFAULT_PRINTING} filtering`);
 
     const result = {
       success: true,
@@ -882,12 +986,20 @@ serve(async (req) => {
       variantsProcessed: progress.processed,
       variantsUpdated: progress.updated,
       apiRequestsUsed: progress.apiRequestsUsed,
+      dailyRequestsUsed: progress.dailyRequestsUsed,
       errors: progress.errors,
       retryAttempts: progress.retryAttempts,
       processingTimeSeconds: elapsedSeconds,
       circuitBreakerTripped: progress.circuitBreakerTripped,
-      message: `Successfully processed ${progress.processed} variants in ${progress.batchesCompleted} batches for ${gameMapping.displayName}`,
-      queue_id: queueJobId
+      message: `Successfully processed ${progress.processed} variants in ${progress.batchesCompleted} batches for ${gameMapping.displayName} (Enterprise optimized)`,
+      queue_id: queueJobId,
+      enterprise_optimizations: {
+        batch_size: BATCH_SIZE,
+        daily_limit: DAILY_LIMIT,
+        rate_limit: MAX_REQUESTS_PER_MINUTE,
+        default_condition: DEFAULT_CONDITION,
+        default_printing: DEFAULT_PRINTING
+      }
     };
 
     return new Response(JSON.stringify(result), { 
@@ -896,7 +1008,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('💥 Critical error in enhanced pricing refresh:', error);
+    console.error('💥 Critical error in enterprise pricing refresh:', error);
     
     // Update job status to error if we have IDs
     if (jobRunId) {
