@@ -353,6 +353,12 @@ export type Database = {
       }
     }
     Functions: {
+      catalog_v2_count_cards_by_game: {
+        Args: { p_game: string }
+        Returns: {
+          count: number
+        }[]
+      }
       grant_role_by_email: {
         Args: { p_email: string; p_role: string }
         Returns: undefined

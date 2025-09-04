@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.get-card-pricing]
 verify_jwt = false
+
+[functions.justtcg-refresh-variants]
+verify_jwt = true
