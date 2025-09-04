@@ -29,6 +29,8 @@ interface ApiUsageStats {
   avg_response_time: number;
   requests_last_hour: number;
   errors_last_hour: number;
+  monthly_requests?: number;
+  daily_requests?: number;
 }
 
 interface PricingStats {
@@ -36,6 +38,22 @@ interface PricingStats {
   success_rate: number;
   avg_duration_minutes: number;
   variants_processed_today: number;
+}
+
+interface SystemHealthCheck {
+  circuit_breaker_status: any[];
+  retry_queue_size: number;
+  last_successful_runs: any[];
+  stuck_jobs: any[];
+}
+
+interface TestProgress {
+  jobId: string;
+  stage: string;
+  progress: number;
+  cardsProcessed: number;
+  errors: number;
+  isRunning: boolean;
 }
 
 export function PricingMonitorPage() {
@@ -50,6 +68,10 @@ export function PricingMonitorPage() {
   const [pricingStats, setPricingStats] = useState<PricingStats | null>(null);
   const [testingPricing, setTestingPricing] = useState(false);
   const [cronJobs, setCronJobs] = useState<any[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthCheck | null>(null);
+  const [checkingSystemHealth, setCheckingSystemHealth] = useState(false);
+  const [testProgress, setTestProgress] = useState<TestProgress | null>(null);
+  const [extendedApiStats, setExtendedApiStats] = useState<any>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -72,10 +94,30 @@ export function PricingMonitorPage() {
 
   const fetchApiStats = useCallback(async () => {
     try {
+      // Fetch API usage data
       const { data, error } = await supabase
         .from('pricing_api_usage')
         .select('*')
         .gte('recorded_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+      // Fetch monthly usage
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      
+      const { data: monthlyData, error: monthlyError } = await supabase
+        .from('pricing_api_usage')
+        .select('*', { count: 'exact', head: true })
+        .gte('recorded_at', monthStart.toISOString());
+
+      // Fetch daily usage
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      
+      const { data: dailyData, error: dailyError } = await supabase
+        .from('pricing_api_usage')
+        .select('*', { count: 'exact', head: true })
+        .gte('recorded_at', dayStart.toISOString());
 
       if (!error && data) {
         const totalRequests = data.length;
@@ -90,7 +132,9 @@ export function PricingMonitorPage() {
           success_rate: totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 0,
           avg_response_time: avgResponseTime,
           requests_last_hour: requestsLastHour,
-          errors_last_hour: errorsLastHour
+          errors_last_hour: errorsLastHour,
+          monthly_requests: monthlyData?.length || 0,
+          daily_requests: dailyData?.length || 0
         });
       }
     } catch (error) {
@@ -100,7 +144,9 @@ export function PricingMonitorPage() {
         success_rate: 0,
         avg_response_time: 0,
         requests_last_hour: 0,
-        errors_last_hour: 0
+        errors_last_hour: 0,
+        monthly_requests: 0,
+        daily_requests: 0
       });
     }
   }, []);
@@ -136,6 +182,15 @@ export function PricingMonitorPage() {
     if (testingPricing) return;
     
     setTestingPricing(true);
+    setTestProgress({
+      jobId: '',
+      stage: 'Starting...',
+      progress: 0,
+      cardsProcessed: 0,
+      errors: 0,
+      isRunning: true
+    });
+
     try {
       const { data, error } = await supabase.rpc('trigger_test_pricing_batch', {
         p_game: game,
@@ -146,7 +201,16 @@ export function PricingMonitorPage() {
       
       const result = data as any;
       if (result.success) {
-        toast.success(`Test pricing job started for ${getGameDisplayName(game)} (10 items)`);
+        setTestProgress(prev => prev ? {
+          ...prev,
+          jobId: result.job_id,
+          stage: 'Test job queued successfully'
+        } : null);
+
+        toast.success(`🧪 Test pricing job started for ${getGameDisplayName(game)} (10 items)`);
+        
+        // Start monitoring test progress
+        monitorTestProgress(result.job_id);
         
         // Refresh data after a brief delay
         setTimeout(() => {
@@ -159,9 +223,66 @@ export function PricingMonitorPage() {
     } catch (error) {
       console.error('Error running test pricing:', error);
       toast.error(error instanceof Error ? error.message : "Failed to start test pricing");
-    } finally {
+      setTestProgress(null);
       setTestingPricing(false);
     }
+  };
+
+  const monitorTestProgress = async (jobId: string) => {
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes max monitoring
+    
+    const checkProgress = async () => {
+      try {
+        const { data: jobs } = await (supabase as any).rpc('get_pricing_jobs_recent');
+        const job = jobs?.find((j: any) => j.id === jobId);
+        
+        if (job) {
+          const progress = Math.round((job.actual_batches / Math.max(job.expected_batches, 1)) * 100);
+          
+          setTestProgress(prev => prev ? {
+            ...prev,
+            stage: job.status === 'running' ? 'Processing cards...' : 
+                   job.status === 'completed' ? 'Test completed!' : 
+                   job.status === 'error' ? 'Test failed' : job.status,
+            progress: progress,
+            cardsProcessed: job.cards_processed || 0,
+            errors: job.error ? 1 : 0,
+            isRunning: job.status === 'running'
+          } : null);
+          
+          if (job.status !== 'running') {
+            // Test completed
+            if (job.status === 'completed') {
+              toast.success(`✅ Test completed! Processed ${job.cards_processed} cards, updated ${job.variants_updated} variants`);
+            } else if (job.status === 'error') {
+              toast.error(`❌ Test failed: ${job.error}`);
+            }
+            
+            setTimeout(() => {
+              setTestProgress(null);
+              setTestingPricing(false);
+            }, 3000);
+            return;
+          }
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(checkProgress, 5000); // Check every 5 seconds
+        } else {
+          setTestProgress(null);
+          setTestingPricing(false);
+        }
+      } catch (error) {
+        console.error('Error monitoring test progress:', error);
+        setTestProgress(null);
+        setTestingPricing(false);
+      }
+    };
+    
+    // Start checking progress after initial delay
+    setTimeout(checkProgress, 2000);
   };
 
   const triggerPricingRefresh = async (game: string) => {
@@ -314,6 +435,53 @@ export function PricingMonitorPage() {
       setHealthStatus({ success: false, error: 'check_failed', message: error.message });
     } finally {
       setHealthChecking(false);
+    }
+  };
+
+  const checkSystemHealth = async () => {
+    setCheckingSystemHealth(true);
+    try {
+      // Fetch circuit breaker status
+      const { data: circuitBreakerData } = await supabase
+        .from('pricing_circuit_breaker')
+        .select('*');
+
+      // Fetch retry queue size
+      const { data: retryQueueData } = await supabase
+        .from('pricing_variant_retries')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch last successful runs
+      const { data: jobsData } = await (supabase as any).rpc('get_pricing_jobs_recent');
+      const lastSuccessfulRuns = ['pokemon', 'pokemon-japan', 'mtg'].map(game => {
+        const lastJob = jobsData?.find((job: any) => job.game === game && job.status === 'completed');
+        return {
+          game,
+          lastRun: lastJob?.finished_at || null,
+          status: lastJob ? 'success' : 'no_recent_success'
+        };
+      });
+
+      // Fetch stuck jobs
+      const { data: stuckJobs } = await supabase
+        .from('pricing_job_queue')
+        .select('*')
+        .eq('status', 'running')
+        .lt('started_at', new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+      setSystemHealth({
+        circuit_breaker_status: circuitBreakerData || [],
+        retry_queue_size: retryQueueData?.length || 0,
+        last_successful_runs: lastSuccessfulRuns,
+        stuck_jobs: stuckJobs || []
+      });
+
+      toast.success('System health check completed');
+    } catch (error) {
+      console.error('Error checking system health:', error);
+      toast.error('Failed to check system health');
+    } finally {
+      setCheckingSystemHealth(false);
     }
   };
 
@@ -558,6 +726,20 @@ export function PricingMonitorPage() {
           )}
           Test Run (10 items)
         </Button>
+        <Button
+          onClick={checkSystemHealth}
+          disabled={checkingSystemHealth}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          {checkingSystemHealth ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Activity className="h-4 w-4" />
+          )}
+          System Health
+        </Button>
     </div>
   );
 
@@ -570,6 +752,42 @@ export function PricingMonitorPage() {
       />
 
       <div className="px-6 space-y-6">
+        {/* Test Progress */}
+        {testProgress && (
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-700">
+                <Zap className="h-5 w-5" />
+                🧪 Test Pricing Job Progress
+              </CardTitle>
+              <CardDescription>Real-time monitoring of test batch (10 cards)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{testProgress.stage}</span>
+                  <span className="text-sm text-muted-foreground">{testProgress.progress}%</span>
+                </div>
+                <Progress value={testProgress.progress} className="h-2" />
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className="font-medium text-blue-600">{testProgress.cardsProcessed}</div>
+                    <div className="text-muted-foreground">Cards Processed</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium text-green-600">{Math.max(0, testProgress.cardsProcessed - testProgress.errors)}</div>
+                    <div className="text-muted-foreground">Successful</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium text-red-600">{testProgress.errors}</div>
+                    <div className="text-muted-foreground">Errors</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -635,10 +853,48 @@ export function PricingMonitorPage() {
                 />
               </div>
 
-              <div className="mt-4 p-4 bg-muted/30 rounded-lg">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              {/* 💰 Enterprise Plan Cost Analysis */}
+              <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-950/20 dark:to-blue-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <div className="font-medium mb-2">API Health Indicators:</div>
+                    <div className="font-medium mb-2 flex items-center gap-2">
+                      <span className="text-green-600">💰</span>
+                      Enterprise Cost Analysis:
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">
+                        Cards per $1: ~{Math.round((apiStats.total_requests * 30) / 99 * 1000) || 5050} cards
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Est. monthly cost: ${Math.round((apiStats.monthly_requests || 0) / 500000 * 99 * 100) / 100}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium mb-2">Monthly Usage Limits:</div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground flex items-center justify-between">
+                        <span>Monthly:</span>
+                        <span className={apiStats.monthly_requests > 500000 ? 'text-red-600' : 'text-green-600'}>
+                          {(apiStats.monthly_requests || 0).toLocaleString()} / 500K
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center justify-between">
+                        <span>Daily:</span>
+                        <span className={apiStats.daily_requests > 50000 ? 'text-red-600' : 'text-green-600'}>
+                          {(apiStats.daily_requests || 0).toLocaleString()} / 50K
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center justify-between">
+                        <span>Hourly:</span>
+                        <span className={apiStats.requests_last_hour > 500 ? 'text-red-600' : 'text-green-600'}>
+                          {apiStats.requests_last_hour} / 500 (using 400 limit)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium mb-2">Performance Metrics:</div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         {apiStats.success_rate >= 95 ? 
@@ -654,22 +910,137 @@ export function PricingMonitorPage() {
                         }
                         <span className="text-xs">Response Time: {apiStats.avg_response_time <= 2000 ? 'Fast' : 'Slow'}</span>
                       </div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="font-medium mb-2">Current Status:</div>
-                    <div className="space-y-1">
-                      <div className="text-xs text-muted-foreground">
-                        Rate limit utilization: ~{Math.round((apiStats.requests_last_hour / 400) * 100)}% (400/hour max)
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Error rate: {apiStats.total_requests > 0 ? Math.round((apiStats.errors_last_hour / Math.max(apiStats.requests_last_hour, 1)) * 100) : 0}%
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Monthly usage: ~{Math.round((apiStats.total_requests * 30) / 1000)}K / 500K requests
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                        <span className="text-xs">Lookup Priority: variantId → tcgplayerId → search</span>
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* System Health Status */}
+        {systemHealth && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                🔍 System Health Check Results
+              </CardTitle>
+              <CardDescription>
+                Comprehensive system status including circuit breakers, retry queues, and job history
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Circuit Breaker Status */}
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Circuit Breaker Status
+                  </h4>
+                  {systemHealth.circuit_breaker_status.length > 0 ? (
+                    <div className="space-y-2">
+                      {systemHealth.circuit_breaker_status.map((breaker: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                          <span className="text-sm">{breaker.game}</span>
+                          <Badge variant={breaker.state === 'closed' ? 'outline' : 'destructive'}>
+                            {breaker.state}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-green-600 flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      All circuit breakers healthy
+                    </div>
+                  )}
+                </div>
+
+                {/* Retry Queue */}
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Retry Queue Status
+                  </h4>
+                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                    <span className="text-sm">Pending Retries</span>
+                    <Badge variant={systemHealth.retry_queue_size > 100 ? 'destructive' : 'outline'}>
+                      {systemHealth.retry_queue_size}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Last Successful Runs */}
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Last Successful Runs
+                  </h4>
+                  <div className="space-y-2">
+                    {systemHealth.last_successful_runs.map((run: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                        <span className="text-sm">{getGameDisplayName(run.game)}</span>
+                        <div className="text-right">
+                          {run.lastRun ? (
+                            <>
+                              <div className="text-xs text-green-600">Success</div>
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(run.lastRun).toLocaleString()}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-xs text-orange-600">No recent success</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stuck Jobs */}
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Stuck Jobs
+                  </h4>
+                  {systemHealth.stuck_jobs.length > 0 ? (
+                    <div className="space-y-2">
+                      {systemHealth.stuck_jobs.map((job: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-red-50 border border-red-200 rounded">
+                          <span className="text-sm">{job.game}</span>
+                          <Badge variant="destructive">Stuck 60min+</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-green-600 flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4" />
+                      No stuck jobs detected
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Health Summary */}
+              <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Overall System Status:</span>
+                  <Badge variant={
+                    systemHealth.stuck_jobs.length === 0 && 
+                    systemHealth.retry_queue_size < 100 &&
+                    systemHealth.circuit_breaker_status.every((b: any) => b.state === 'closed')
+                      ? 'outline' : 'destructive'
+                  }>
+                    {systemHealth.stuck_jobs.length === 0 && 
+                     systemHealth.retry_queue_size < 100 &&
+                     systemHealth.circuit_breaker_status.every((b: any) => b.state === 'closed')
+                      ? '✅ Healthy' : '⚠️ Needs Attention'}
+                  </Badge>
                 </div>
               </div>
             </CardContent>
