@@ -71,22 +71,58 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
 
     // Actions
     {
-      id: "action-sync-pokemon",
-      title: "Sync Pokémon Pricing",
-      description: "Start pricing job for Pokémon cards",
+      id: "action-sync-pokemon-en",
+      title: "Sync Pokémon EN",
+      description: "Start pricing job for English Pokémon cards",
       icon: <Zap className="w-4 h-4" />,
       category: "Actions",
-      action: () => onAction?.("sync-pokemon"),
-      keywords: ["sync", "pokemon", "pricing", "cards"]
+      action: () => onAction?.("sync-pokemon-en"),
+      keywords: ["sync", "pokemon", "english", "pricing", "cards"]
+    },
+    {
+      id: "action-sync-pokemon-jp",
+      title: "Sync Pokémon JP",
+      description: "Start pricing job for Japanese Pokémon cards",
+      icon: <Zap className="w-4 h-4" />,
+      category: "Actions",
+      action: () => onAction?.("sync-pokemon-jp"),
+      keywords: ["sync", "pokemon", "japanese", "pricing", "cards"]
     },
     {
       id: "action-sync-mtg", 
-      title: "Sync MTG Pricing",
-      description: "Start pricing job for Magic cards",
+      title: "Sync MTG",
+      description: "Start pricing job for Magic: The Gathering cards",
       icon: <Zap className="w-4 h-4" />,
       category: "Actions",
       action: () => onAction?.("sync-mtg"),
-      keywords: ["sync", "magic", "mtg", "pricing"]
+      keywords: ["sync", "magic", "mtg", "pricing", "cards"]
+    },
+    {
+      id: "action-sync-yugioh",
+      title: "Sync Yu-Gi-Oh",
+      description: "Start pricing job for Yu-Gi-Oh cards",
+      icon: <Zap className="w-4 h-4" />,
+      category: "Actions",
+      action: () => onAction?.("sync-yugioh"),
+      keywords: ["sync", "yugioh", "yugi", "pricing", "cards"]
+    },
+    {
+      id: "action-sync-sealed",
+      title: "Sync Sealed Products",
+      description: "Start pricing job for all sealed products",
+      icon: <Database className="w-4 h-4" />,
+      category: "Actions",
+      action: () => onAction?.("sync-sealed"),
+      keywords: ["sync", "sealed", "products", "booster", "boxes"]
+    },
+    {
+      id: "action-sync-all",
+      title: "Sync All Games",
+      description: "Start pricing jobs for all supported games",
+      icon: <Zap className="w-4 h-4" />,
+      category: "Actions",
+      action: () => onAction?.("sync-all"),
+      keywords: ["sync", "all", "games", "everything", "pricing"]
     },
     {
       id: "action-health-check",

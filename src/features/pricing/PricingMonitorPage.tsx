@@ -15,6 +15,7 @@ import { SystemHealthTab } from "@/components/dashboard/SystemHealthTab";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
 import { EnhancedEmptyState } from "@/components/dashboard/EnhancedEmptyState";
+import { QuickActions } from "@/components/dashboard/QuickActions";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -149,21 +150,126 @@ function PricingMonitorPageContent() {
     }
   };
 
+  const handleSyncGame = async (gameSlug: string, displayName: string) => {
+    try {
+      addToast({
+        type: 'info',
+        title: `🔄 Syncing ${displayName}`,
+        message: `Starting pricing sync for ${displayName}...`
+      });
+
+      // Use the enqueue_pricing_job RPC function
+      const { data, error } = await supabase.rpc('enqueue_pricing_job', {
+        p_game: gameSlug,
+        p_priority: 0
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      addToast({
+        type: 'success',
+        title: `✅ ${displayName} Sync Queued`,
+        message: `Pricing job for ${displayName} has been queued successfully.`,
+        duration: 6000
+      });
+    } catch (error) {
+      console.error(`Sync error for ${displayName}:`, error);
+      addToast({
+        type: 'error',
+        title: `❌ ${displayName} Sync Failed`,
+        message: `Failed to queue sync job: ${error.message}`,
+        duration: 8000
+      });
+    }
+  };
+
+  const handleSyncAll = async () => {
+    const games = [
+      { slug: 'mtg', name: 'Magic: The Gathering' },
+      { slug: 'pokemon', name: 'Pokémon EN' },
+      { slug: 'pokemon-japan', name: 'Pokémon JP' },
+      { slug: 'yugioh', name: 'Yu-Gi-Oh' }
+    ];
+
+    addToast({
+      type: 'info',
+      title: '🚀 Starting Mass Sync',
+      message: 'Queuing pricing jobs for all supported games...'
+    });
+
+    let successCount = 0;
+    for (const game of games) {
+      try {
+        await supabase.rpc('enqueue_pricing_job', {
+          p_game: game.slug,
+          p_priority: 0
+        });
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to sync ${game.name}:`, error);
+      }
+    }
+
+    addToast({
+      type: successCount === games.length ? 'success' : 'warning',
+      title: successCount === games.length ? '✅ All Jobs Queued' : '⚠️ Partial Success',
+      message: `Successfully queued ${successCount}/${games.length} pricing jobs.`,
+      duration: 8000
+    });
+  };
+
+  const handleSyncSealed = async () => {
+    try {
+      addToast({
+        type: 'info',
+        title: '📦 Syncing Sealed Products',
+        message: 'Starting sealed product sync...'
+      });
+
+      const { data, error } = await supabase.functions.invoke('justtcg-sealed-sync', {
+        body: {}
+      });
+
+      if (error) throw error;
+
+      addToast({
+        type: 'success',
+        title: '✅ Sealed Products Sync Started',
+        message: 'Sealed product sync has been initiated successfully.',
+        duration: 6000
+      });
+    } catch (error) {
+      console.error('Sealed sync error:', error);
+      addToast({
+        type: 'error',
+        title: '❌ Sealed Products Sync Failed',
+        message: `Failed to start sealed product sync: ${error.message}`,
+        duration: 8000
+      });
+    }
+  };
+
   const handleCommandAction = (action: string) => {
     switch (action) {
-      case 'sync-pokemon':
-        addToast({
-          type: 'info',
-          title: '🔄 Syncing Pokémon',
-          message: 'Starting pricing sync for Pokémon cards...'
-        });
+      case 'sync-pokemon-en':
+        handleSyncGame('pokemon', 'Pokémon EN');
+        break;
+      case 'sync-pokemon-jp':
+        handleSyncGame('pokemon-japan', 'Pokémon JP');
         break;
       case 'sync-mtg':
-        addToast({
-          type: 'info',
-          title: '🔄 Syncing MTG',
-          message: 'Starting pricing sync for Magic: The Gathering...'
-        });
+        handleSyncGame('mtg', 'Magic: The Gathering');
+        break;
+      case 'sync-yugioh':
+        handleSyncGame('yugioh', 'Yu-Gi-Oh');
+        break;
+      case 'sync-sealed':
+        handleSyncSealed();
+        break;
+      case 'sync-all':
+        handleSyncAll();
         break;
       case 'health-check':
         handleHealthCheck();
@@ -217,7 +323,17 @@ function PricingMonitorPageContent() {
 
           {/* Tab Contents */}
           <div className="relative min-h-[600px]">
-            <TabsContent value="overview" className="m-0">
+            <TabsContent value="overview" className="m-0 space-y-6">
+              <QuickActions
+                onTestBatch={handleTestPricing}
+                onSyncAll={handleSyncAll}
+                onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
+                onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
+                onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
+                onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+                onSyncSealed={handleSyncSealed}
+              />
+              
               <EnhancedEmptyState
                 type="general"
                 title="System Overview Dashboard"
