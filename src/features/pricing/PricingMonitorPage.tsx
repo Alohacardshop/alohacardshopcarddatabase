@@ -131,6 +131,37 @@ export function PricingMonitorPage() {
     }
   };
 
+  const adminCancelJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to admin cancel this job? This will immediately mark it as cancelled in the database.')) {
+      return;
+    }
+
+    setCancelling(jobId);
+    try {
+      const { error } = await (supabase as any).rpc('force_finish_pricing_job', {
+        p_job_id: jobId,
+        p_status: 'cancelled',
+        p_error: 'Admin cancelled - force stopped'
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to admin cancel job');
+      }
+
+      toast.success('Job cancelled by admin');
+      
+      // Refresh the jobs list
+      setTimeout(() => {
+        fetchJobs();
+      }, 1000);
+    } catch (error) {
+      console.error('Error admin cancelling job:', error);
+      toast.error('Failed to admin cancel job');
+    } finally {
+      setCancelling(null);
+    }
+  };
+
   const getGameDisplayName = (game: string) => {
     switch (game) {
       case 'pokemon': return 'Pokémon EN';
@@ -376,20 +407,36 @@ export function PricingMonitorPage() {
                         </TableCell>
                         <TableCell>
                           {job.status === 'running' && (
-                            <Button
-                              onClick={() => forceStopJob(job.id)}
-                              disabled={cancelling === job.id}
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                            >
-                              {cancelling === job.id ? (
-                                <RefreshCw className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Square className="h-3 w-3" />
-                              )}
-                              Force Stop
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => forceStopJob(job.id)}
+                                disabled={cancelling === job.id}
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                              >
+                                {cancelling === job.id ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Square className="h-3 w-3" />
+                                )}
+                                Force Stop
+                              </Button>
+                              <Button
+                                onClick={() => adminCancelJob(job.id)}
+                                disabled={cancelling === job.id}
+                                variant="destructive"
+                                size="sm"
+                                className="gap-2"
+                              >
+                                {cancelling === job.id ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <XCircle className="h-3 w-3" />
+                                )}
+                                Admin Cancel
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
