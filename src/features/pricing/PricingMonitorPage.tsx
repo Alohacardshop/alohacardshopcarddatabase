@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle, Square, Trash2, Settings } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle, Square, Trash2, Settings, BarChart3, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,21 @@ interface PricingJob {
   error: string | null;
 }
 
+interface ApiUsageStats {
+  total_requests: number;
+  success_rate: number;
+  avg_response_time: number;
+  requests_last_hour: number;
+  errors_last_hour: number;
+}
+
+interface PricingStats {
+  jobs_today: number;
+  success_rate: number;
+  avg_duration_minutes: number;
+  variants_processed_today: number;
+}
+
 export function PricingMonitorPage() {
   const [jobs, setJobs] = useState<PricingJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,8 +46,10 @@ export function PricingMonitorPage() {
   const [cleaning, setCleaning] = useState(false);
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthStatus, setHealthStatus] = useState<any>(null);
+  const [apiStats, setApiStats] = useState<ApiUsageStats | null>(null);
+  const [pricingStats, setPricingStats] = useState<PricingStats | null>(null);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       const { data: jobsData, error } = await (supabase as any).rpc('get_pricing_jobs_recent');
 
@@ -49,7 +66,33 @@ export function PricingMonitorPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchApiStats = useCallback(async () => {
+    try {
+      // Skip API stats until pricing_api_usage table is created via migration
+      console.log('API stats feature pending database migration');
+      setApiStats({
+        total_requests: 0,
+        success_rate: 0,
+        avg_response_time: 0,
+        requests_last_hour: 0,
+        errors_last_hour: 0
+      });
+    } catch (error) {
+      console.error('Error fetching API stats:', error);
+    }
+  }, []);
+
+  const fetchPricingStats = useCallback(async () => {
+    try {
+      // Skip pricing stats until pricing_stats_mv is created via migration
+      console.log('Pricing stats feature pending database migration');
+      setPricingStats(null);
+    } catch (error) {
+      console.error('Error fetching pricing stats:', error);
+    }
+  }, []);
 
   const triggerPricingRefresh = async (game: string) => {
     setInvoking(game);
@@ -272,14 +315,43 @@ export function PricingMonitorPage() {
 
   useEffect(() => {
     fetchJobs();
+    fetchApiStats();
+    fetchPricingStats();
+    
+    // Set up real-time subscriptions (disabled until migration is run)
+    const jobsChannel = supabase
+      .channel('pricing-jobs-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'ops',
+          table: 'pricing_job_runs'
+        },
+        (payload) => {
+          // Refresh jobs when any job changes
+          fetchJobs();
+        }
+      )
+      .subscribe();
+
+    // Note: API usage real-time subscription will be enabled after migration
     
     // Adaptive polling: faster when jobs are active
     const hasRunningOrCancelling = runningJobs > 0 || cancelling !== null;
     const pollInterval = hasRunningOrCancelling ? 5000 : 30000;
     
-    const interval = setInterval(fetchJobs, pollInterval);
-    return () => clearInterval(interval);
-  }, [runningJobs, cancelling]);
+    const interval = setInterval(() => {
+      fetchJobs();
+      fetchApiStats();
+      fetchPricingStats();
+    }, pollInterval);
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(jobsChannel);
+    };
+  }, [runningJobs, cancelling, fetchJobs, fetchApiStats, fetchPricingStats]);
 
   // Add keyboard shortcuts
   useEffect(() => {
@@ -406,20 +478,45 @@ export function PricingMonitorPage() {
           />
           <StatCard
             title="Completed Today"
-            value={completedJobs}
+            value={pricingStats?.jobs_today || completedJobs}
             icon={<CheckCircle className="h-4 w-4 text-green-500" />}
           />
           <StatCard
-            title="Failed Jobs"
-            value={failedJobs}
-            icon={<XCircle className="h-4 w-4 text-red-500" />}
+            title="Success Rate"
+            value={pricingStats ? `${Math.round(pricingStats.success_rate)}%` : `${Math.round((completedJobs / Math.max(jobs.length, 1)) * 100)}%`}
+            icon={<TrendingUp className="h-4 w-4 text-green-500" />}
           />
           <StatCard
             title="Avg Duration"
-            value={`${Math.round(avgDuration / 60000)}m`}
+            value={pricingStats ? `${Math.round(pricingStats.avg_duration_minutes)}m` : `${Math.round(avgDuration / 60000)}m`}
             icon={<Clock className="h-4 w-4 text-gray-500" />}
           />
         </div>
+
+        {/* API Usage & Success Dashboard */}
+        {apiStats && apiStats.total_requests === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                API Usage & Success Metrics (24h)
+              </CardTitle>
+              <CardDescription>
+                Real-time monitoring of JustTCG API performance and usage patterns (pending database migration)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="p-4 bg-muted/30 rounded-lg text-center">
+                <div className="text-sm text-muted-foreground">
+                  <BarChart3 className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                  API usage metrics will be available after running the database migration.
+                  <br />
+                  <span className="text-xs">This dashboard will track API requests, success rates, and performance in real-time.</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Scheduled Jobs */}
         <Card>
@@ -693,14 +790,17 @@ export function PricingMonitorPage() {
                               {getStatusBadge(job.status, job.id)}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="w-24">
-                              <Progress value={calculateProgress(job)} className="h-2" />
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {calculateProgress(job)}%
-                              </div>
-                            </div>
-                          </TableCell>
+                           <TableCell>
+                             <div className="w-24">
+                               <Progress value={calculateProgress(job)} className="h-2" />
+                               <div className="text-xs text-muted-foreground mt-1">
+                                 {calculateProgress(job)}%
+                                 {job.status === 'running' && (
+                                   <span className="ml-1 text-blue-600">●</span>
+                                 )}
+                               </div>
+                             </div>
+                           </TableCell>
                           <TableCell>
                             {job.actual_batches} / {job.expected_batches}
                           </TableCell>

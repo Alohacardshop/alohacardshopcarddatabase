@@ -160,6 +160,36 @@ async function fetchVariantPricing(
 }
 
 /**
+ * Record API usage metrics
+ */
+async function recordApiUsage(
+  supabase: any,
+  jobRunId: string,
+  endpoint: string,
+  statusCode: number,
+  responseTimeMs: number,
+  success: boolean,
+  errorMessage?: string
+): Promise<void> {
+  try {
+    await supabase
+      .from('pricing_api_usage')
+      .insert({
+        job_run_id: jobRunId,
+        endpoint,
+        status_code: statusCode,
+        response_time_ms: responseTimeMs,
+        success,
+        error_message: errorMessage,
+        recorded_at: new Date().toISOString()
+      });
+  } catch (error) {
+    console.error('⚠️ Failed to record API usage:', error);
+    // Don't throw - metrics are non-critical
+  }
+}
+
+/**
  * Update job progress in database
  */
 async function updateJobProgress(
@@ -189,7 +219,8 @@ async function processBatch(
   batchIndex: number,
   totalBatches: number,
   apiKey: string,
-  progress: JobProgress
+  progress: JobProgress,
+  jobRunId: string
 ): Promise<{ processed: number; updated: number; errors: number }> {
   
   console.log(`🔄 Processing batch ${batchIndex + 1}/${totalBatches} (${batch.length} variants)`);
@@ -209,7 +240,21 @@ async function processBatch(
   progress.apiRequestsUsed++;
   console.log(`🔄 API Request ${progress.apiRequestsUsed} - fetching ${variantIds.length} variants`);
   
+  const apiStartTime = Date.now();
   const pricingData = await fetchVariantPricing(variantIds, apiKey);
+  const apiResponseTime = Date.now() - apiStartTime;
+  
+  // Record API usage metrics
+  await recordApiUsage(
+    supabase, 
+    jobRunId,
+    'cards',
+    200, // Assuming success if we got data
+    apiResponseTime,
+    pricingData.length > 0,
+    pricingData.length === 0 ? 'No pricing data returned' : undefined
+  );
+  
   console.log(`✅ JustTCG returned pricing for ${pricingData.length}/${variantIds.length} variants`);
 
   // Update variants in database
@@ -524,7 +569,8 @@ serve(async (req) => {
           batchIndex, 
           batches.length, 
           justTCGApiKey, 
-          progress
+          progress,
+          jobRunId
         );
 
         // Update progress
