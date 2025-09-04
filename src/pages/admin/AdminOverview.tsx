@@ -305,6 +305,9 @@ export function AdminOverview() {
             <Button onClick={() => window.location.href = '/admin/jobs'} variant="outline">
               View Jobs
             </Button>
+            <Button onClick={() => window.location.href = '/admin/pricing'} variant="outline">
+              Pricing Monitor
+            </Button>
             <Button onClick={() => window.location.href = '/admin/database'} variant="outline">
               Database Tools
             </Button>

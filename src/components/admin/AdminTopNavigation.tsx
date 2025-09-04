@@ -21,7 +21,8 @@ import {
   TestTube,
   Code,
   Home,
-  Shield
+  Shield,
+  DollarSign
 } from 'lucide-react';
 
 const adminPages = {
@@ -30,6 +31,7 @@ const adminPages = {
   '/admin/database': { title: 'Database', icon: Database },
   '/admin/sync': { title: 'Sync Control', icon: RefreshCw },
   '/admin/jobs': { title: 'Job Monitor', icon: FileSearch },
+  '/admin/pricing': { title: 'Pricing Monitor', icon: DollarSign },
   '/admin/data': { title: 'Data Browser', icon: Search },
   '/admin/api-test': { title: 'API Testing', icon: TestTube },
   '/admin/developers': { title: 'Developers', icon: Code },

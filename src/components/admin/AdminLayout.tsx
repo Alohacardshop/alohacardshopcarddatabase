@@ -28,7 +28,8 @@ import {
   TestTube,
   Shield,
   Home,
-  Code
+  Code,
+  DollarSign
 } from 'lucide-react';
 import { AdminTopNavigation } from './AdminTopNavigation';
 import { NavLink } from 'react-router-dom';
@@ -68,6 +69,7 @@ function AdminSidebar() {
       items: [
         { title: 'Sync Control', url: '/admin/sync', icon: RefreshCw },
         { title: 'Job Monitor', url: '/admin/jobs', icon: FileSearch },
+        { title: 'Pricing Monitor', url: '/admin/pricing', icon: DollarSign },
       ]
     },
     {

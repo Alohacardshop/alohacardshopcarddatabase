@@ -14,6 +14,7 @@ import { EnvironmentConfig } from "./pages/admin/EnvironmentConfig";
 import { DatabaseManagement } from "./pages/admin/DatabaseManagement";
 import { DataBrowser } from "./pages/admin/DataBrowser";
 import { APITesting } from "./pages/admin/APITesting";
+import { PricingMonitor } from "./pages/admin/PricingMonitor";
 import { SetsManager } from "./components/tcg/SetsManager";
 import { JobMonitor } from "./components/tcg/JobMonitor";
 import { Developers } from "./pages/admin/Developers";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="database" element={<DatabaseManagement />} />
               <Route path="sync" element={<SetsManager />} />
               <Route path="jobs" element={<JobMonitor />} />
+              <Route path="pricing" element={<PricingMonitor />} />
               <Route path="data" element={<DataBrowser />} />
               <Route path="api-test" element={<APITesting />} />
               <Route path="developers" element={<Developers />} />
