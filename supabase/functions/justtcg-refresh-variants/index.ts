@@ -8,6 +8,8 @@ const corsHeaders = {
 
 const BATCH_SIZE = 20; // JustTCG API limit for variant queries
 const CEILING = 470;
+const TIME_LIMIT_MS = 4.5 * 60 * 1000; // 4.5 minutes in milliseconds
+const VARIANT_LIMIT = 700; // Reduced from 1000 to ensure completion within time window
 
 // Game mapping from UI names to API format
 const GAME_MAP: Record<string, string> = {
@@ -152,6 +154,7 @@ serve(async (req) => {
   }
 
   let jobRunId: string | null = null;
+  const startTime = Date.now(); // Track start time for time-guard
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -221,7 +224,7 @@ serve(async (req) => {
       .not('justtcg_variant_id', 'is', null)
       .lt('last_updated', new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Only variants not updated in last hour
       .order('last_updated', { ascending: true })
-      .limit(1000);
+      .limit(VARIANT_LIMIT);
 
     if (queryError) {
       console.error('Database query failed:', queryError);
@@ -275,6 +278,33 @@ serve(async (req) => {
       console.log(`Processing batch ${batchIndex + 1}/${batches.length}...`);
 
       try {
+        // Time-guard: Check if we're approaching the time limit
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime > TIME_LIMIT_MS) {
+          console.log(`Time limit approaching (${elapsedTime}ms), stopping gracefully to avoid timeout`);
+          await supabase.rpc('finish_pricing_job_run', {
+            p_job_id: jobRunId,
+            p_status: 'preflight_ceiling',
+            p_actual_batches: batchIndex,
+            p_cards_processed: totalProcessed,
+            p_variants_updated: totalUpdated,
+            p_error: `Time limit reached after ${Math.floor(elapsedTime/1000)}s. Job stopped to avoid Edge Function timeout.`
+          });
+          
+          return new Response(JSON.stringify({ 
+            success: true, 
+            preflight_ceiling: true,
+            game, 
+            actualBatches: batchIndex, 
+            cardsProcessed: totalProcessed, 
+            variantsUpdated: totalUpdated,
+            message: `Job stopped due to time limit. Processed ${batchIndex}/${batches.length} batches.`
+          }), { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          });
+        }
+
         // Check for cancellation
         const { data: isCancelled } = await supabase.rpc('is_pricing_job_cancelled', { p_job_id: jobRunId });
         

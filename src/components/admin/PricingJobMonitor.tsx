@@ -81,14 +81,16 @@ export function PricingJobMonitor() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'started':
+      case 'running':
         return <Clock className="h-4 w-4 text-blue-500" />;
-      case 'ok':
+      case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'error':
         return <XCircle className="h-4 w-4 text-red-500" />;
       case 'preflight_ceiling':
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'cancelled':
+        return <XCircle className="h-4 w-4 text-orange-500" />;
       default:
         return <Clock className="h-4 w-4 text-gray-500" />;
     }
@@ -96,15 +98,24 @@ export function PricingJobMonitor() {
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      started: 'default',
-      ok: 'default',
+      running: 'default',
+      completed: 'default',
       error: 'destructive',
-      preflight_ceiling: 'secondary'
+      preflight_ceiling: 'secondary',
+      cancelled: 'outline'
+    } as const;
+
+    const labels = {
+      running: 'RUNNING',
+      completed: 'COMPLETED',
+      error: 'ERROR',
+      preflight_ceiling: 'TIME LIMIT',
+      cancelled: 'CANCELLED'
     } as const;
 
     return (
       <Badge variant={variants[status as keyof typeof variants] || 'secondary'}>
-        {status.replace('_', ' ').toUpperCase()}
+        {labels[status as keyof typeof labels] || status.toUpperCase()}
       </Badge>
     );
   };
@@ -226,6 +237,16 @@ export function PricingJobMonitor() {
                           <div className="flex items-center gap-2">
                             {getStatusIcon(job.status)}
                             {getStatusBadge(job.status)}
+                            {job.status === 'preflight_ceiling' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => triggerPricingRefresh(job.game_name)}
+                                className="ml-2"
+                              >
+                                Resume
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
