@@ -183,6 +183,38 @@ serve(async (req) => {
     // Process cards in batches
     for (let offset = 0; offset < totalCards; offset += BATCH_SIZE) {
       try {
+        // Check for cancellation before each batch
+        const { data: isCancelled, error: cancelError } = await supabase
+          .rpc('is_pricing_job_cancelled', { p_job_id: jobRunId });
+
+        if (cancelError) {
+          console.warn('Error checking cancellation status:', cancelError);
+        } else if (isCancelled) {
+          console.log('Job cancellation requested, stopping gracefully');
+          await supabase.rpc('finish_pricing_job_run', {
+            p_job_id: jobRunId,
+            p_status: 'cancelled',
+            p_actual_batches: batchCount,
+            p_cards_processed: totalCardsProcessed,
+            p_variants_updated: totalVariantsUpdated
+          });
+          
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              cancelled: true,
+              game, 
+              actualBatches: batchCount, 
+              cardsProcessed: totalCardsProcessed, 
+              variantsUpdated: totalVariantsUpdated 
+            }), 
+            { 
+              status: 200, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+
         // Fetch batch of cards using public RPC
         const { data: cardsData, error: cardsError } = await supabase
           .rpc('fetch_cards_with_variants', {
@@ -333,6 +365,14 @@ serve(async (req) => {
         batchCount++;
 
         console.log(`Batch ${batchCount} complete: ${variantUpserts.length} variants updated`);
+
+        // Update progress after each batch (heartbeat)
+        await supabase.rpc('update_pricing_job_progress', {
+          p_job_id: jobRunId,
+          p_actual_batches: batchCount,
+          p_cards_processed: totalCardsProcessed,
+          p_variants_updated: totalVariantsUpdated
+        });
 
         // Rate limiting
         await sleep(125);

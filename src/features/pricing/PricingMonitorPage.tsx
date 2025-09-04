@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle } from "lucide-react";
+import { RefreshCw, Clock, CheckCircle, XCircle, TrendingUp, Activity, AlertTriangle, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,8 @@ export function PricingMonitorPage() {
   const [jobs, setJobs] = useState<PricingJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [invoking, setInvoking] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [cleaning, setCleaning] = useState(false);
 
   const fetchJobs = async () => {
     try {
@@ -72,6 +74,63 @@ export function PricingMonitorPage() {
     }
   };
 
+  const forceStopJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to force stop this job? This will cancel the current run.')) {
+      return;
+    }
+
+    setCancelling(jobId);
+    try {
+      const { error } = await (supabase as any).rpc('request_pricing_job_cancel', {
+        p_job_id: jobId,
+        p_reason: 'User requested force stop'
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to request job cancellation');
+      }
+
+      toast.success('Job cancellation requested');
+      
+      // Refresh the jobs list
+      setTimeout(() => {
+        fetchJobs();
+      }, 1000);
+    } catch (error) {
+      console.error('Error requesting job cancellation:', error);
+      toast.error('Failed to request job cancellation');
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  const cleanupStuckJobs = async () => {
+    if (!confirm('Are you sure you want to clean up stuck jobs? This will mark jobs running for over 60 minutes as errors.')) {
+      return;
+    }
+
+    setCleaning(true);
+    try {
+      const { data: cleanedCount, error } = await (supabase as any).rpc('cancel_stuck_pricing_jobs', {
+        p_max_minutes: 60
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to clean up stuck jobs');
+      }
+
+      toast.success(`Cleaned up ${cleanedCount || 0} stuck jobs`);
+      
+      // Refresh the jobs list
+      fetchJobs();
+    } catch (error) {
+      console.error('Error cleaning up stuck jobs:', error);
+      toast.error('Failed to clean up stuck jobs');
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const getGameDisplayName = (game: string) => {
     switch (game) {
       case 'pokemon': return 'Pokémon EN';
@@ -91,12 +150,17 @@ export function PricingMonitorPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, jobId: string) => {
+    // Check if cancel is requested for this job
+    const isCancelRequested = jobs.some(j => j.id === jobId && status === 'running');
+    
     switch (status) {
       case 'running':
         return <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">Running</Badge>;
       case 'completed':
         return <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Completed</Badge>;
+      case 'cancelled':
+        return <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">Cancelled</Badge>;
       case 'error':
         return <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">Error</Badge>;
       case 'preflight_ceiling':
@@ -117,7 +181,7 @@ export function PricingMonitorPage() {
 
   const calculateProgress = (job: PricingJob) => {
     if (job.status === 'completed') return 100;
-    if (job.status === 'error' || job.status === 'preflight_ceiling') return 0;
+    if (job.status === 'error' || job.status === 'preflight_ceiling' || job.status === 'cancelled') return 0;
     if (job.expected_batches === 0) return 0;
     return Math.round((job.actual_batches / job.expected_batches) * 100);
   };
@@ -125,7 +189,7 @@ export function PricingMonitorPage() {
   // Stats calculations
   const runningJobs = jobs.filter(job => job.status === 'running').length;
   const completedJobs = jobs.filter(job => job.status === 'completed').length;
-  const failedJobs = jobs.filter(job => job.status === 'error').length;
+  const failedJobs = jobs.filter(job => job.status === 'error' || job.status === 'cancelled').length;
   const avgDuration = jobs
     .filter(job => job.status === 'completed' && job.finished_at)
     .reduce((acc, job) => {
@@ -135,9 +199,11 @@ export function PricingMonitorPage() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 30000);
+    // Adaptive polling: 5s if any jobs running, 30s otherwise
+    const pollInterval = runningJobs > 0 ? 5000 : 30000;
+    const interval = setInterval(fetchJobs, pollInterval);
     return () => clearInterval(interval);
-  }, []);
+  }, [runningJobs]);
 
   const actions = (
     <div className="flex items-center gap-3">
@@ -182,6 +248,20 @@ export function PricingMonitorPage() {
           MTG
         </Button>
       </div>
+      <Button
+        onClick={cleanupStuckJobs}
+        disabled={cleaning}
+        variant="outline"
+        size="sm"
+        className="gap-2"
+      >
+        {cleaning ? (
+          <RefreshCw className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+        Clean Stuck
+      </Button>
       <Button
         onClick={fetchJobs}
         variant="outline"
@@ -260,6 +340,7 @@ export function PricingMonitorPage() {
                       <TableHead>Updated</TableHead>
                       <TableHead>Duration</TableHead>
                       <TableHead>Started</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -271,7 +352,7 @@ export function PricingMonitorPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {getStatusIcon(job.status)}
-                            {getStatusBadge(job.status)}
+                            {getStatusBadge(job.status, job.id)}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -292,6 +373,24 @@ export function PricingMonitorPage() {
                         </TableCell>
                         <TableCell>
                           {new Date(job.started_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          {job.status === 'running' && (
+                            <Button
+                              onClick={() => forceStopJob(job.id)}
+                              disabled={cancelling === job.id}
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                            >
+                              {cancelling === job.id ? (
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Square className="h-3 w-3" />
+                              )}
+                              Force Stop
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
