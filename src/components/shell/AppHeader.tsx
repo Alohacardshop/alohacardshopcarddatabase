@@ -1,11 +1,15 @@
-import { Search, Moon, Sun, User } from "lucide-react";
+import { Search, Moon, Sun, User, Command, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "next-themes";
 
-export function AppHeader() {
+interface AppHeaderProps {
+  onOpenCommandPalette?: () => void;
+}
+
+export function AppHeader({ onOpenCommandPalette }: AppHeaderProps) {
   const { theme, setTheme } = useTheme();
 
   return (
@@ -22,11 +26,35 @@ export function AppHeader() {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="relative hidden sm:block">
+        {/* Command Palette Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onOpenCommandPalette}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Command className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">Quick Actions</span>
+        </Button>
+
+        {/* Sync Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenCommandPalette}
+          className="text-primary border-primary/30 hover:bg-primary/10"
+        >
+          <Zap className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">Sync</span>
+        </Button>
+
+        <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search..."
-            className="pl-9 w-64 bg-muted/50"
+            className="pl-9 w-48 bg-muted/50"
+            onClick={onOpenCommandPalette}
+            readOnly
           />
         </div>
 

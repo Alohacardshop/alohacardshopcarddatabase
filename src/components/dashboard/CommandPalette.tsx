@@ -317,8 +317,8 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
         <div className="border-t px-4 py-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-4">
-              <span>Press Cmd+K to open</span>
-              <span>Shift+S for sync all</span>
+              <span>Click Quick Actions button or</span>
+              <span>Ctrl+K / Cmd+K</span>
             </div>
             <div className="flex items-center gap-4">
               <span>{filteredCommands.length} commands</span>

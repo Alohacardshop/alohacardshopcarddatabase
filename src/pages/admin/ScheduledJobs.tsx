@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, Play, Pause, RefreshCw, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, Play, Pause, RefreshCw, AlertCircle, Zap } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -287,14 +287,28 @@ export function ScheduledJobs() {
                   </span>
                 </div>
                 
-                <Button
-                  size="sm"
-                  onClick={() => handleRunNow(job.jobname)}
-                  disabled={!job.active}
-                >
-                  <Play className="w-3 h-3 mr-1" />
-                  Run Now
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleRunNow(job.jobname)}
+                    disabled={!job.active}
+                  >
+                    <Play className="w-3 h-3 mr-1" />
+                    Run Now
+                  </Button>
+                  
+                  {job.jobname.includes('pricing') && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleRunNow(`${job.jobname}-sync`)}
+                      disabled={!job.active}
+                    >
+                      <Zap className="w-3 h-3 mr-1" />
+                      Trigger Sync
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

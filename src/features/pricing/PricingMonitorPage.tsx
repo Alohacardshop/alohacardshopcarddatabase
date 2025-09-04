@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { Activity } from "lucide-react";
+import { Activity, Zap } from "lucide-react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { WelcomeDashboard } from "@/components/dashboard/WelcomeDashboard";
 import { StickyHeader } from "@/components/dashboard/StickyHeader";
-import { FloatingActionButton } from "@/components/dashboard/FloatingActionButton";
 import { KeyboardShortcuts } from "@/components/dashboard/KeyboardShortcuts";
 import { CommandPalette } from "@/components/dashboard/CommandPalette";
 import { ToastProvider, useToast } from "@/components/dashboard/ToastManager";
@@ -18,6 +18,8 @@ import { QuickActions } from "@/components/dashboard/QuickActions";
 import { SyncEverythingSection } from "@/components/dashboard/SyncEverythingSection";
 import { EssentialMetrics } from "@/components/dashboard/EssentialMetrics";
 import { AdvancedMetrics } from "@/components/dashboard/AdvancedMetrics";
+import { QuickActionBar } from "@/components/dashboard/QuickActionBar";
+import { SyncFloatingActionButton } from "@/components/dashboard/SyncFloatingActionButton";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -55,10 +57,16 @@ function PricingMonitorPageContent() {
     return () => clearInterval(usageInterval);
   }, [addToast]);
 
-  // Keyboard shortcut for command palette
+  // Keyboard shortcut for command palette (with fallback)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Try Ctrl+K or Cmd+K
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+      // Alternative: Ctrl+Shift+P or Cmd+Shift+P
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         setCommandPaletteOpen(true);
       }
@@ -298,11 +306,34 @@ function PricingMonitorPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Page Header */}
-      <PageHeader title="Pricing Monitor Dashboard" />
+      {/* Page Header with Quick Actions Button */}
+      <PageHeader 
+        title="Pricing Monitor Dashboard"
+        actions={
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setCommandPaletteOpen(true)}
+          >
+            <Zap className="w-4 h-4 mr-1" />
+            Quick Actions
+          </Button>
+        }
+      />
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* Quick Action Bar - Prominent at top */}
+        <QuickActionBar
+          onSyncAll={handleSyncAll}
+          onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
+          onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
+          onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
+          onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+          onSyncSealed={handleSyncSealed}
+          onTestBatch={handleTestPricing}
+        />
+
         {/* Welcome Dashboard - Streamlined */}
         <WelcomeDashboard />
 
@@ -375,13 +406,16 @@ function PricingMonitorPageContent() {
         </Tabs>
       </div>
 
-      {/* Floating Action Button */}
-      <FloatingActionButton
-        onInstantPriceCheck={handleInstantPriceCheck}
-        onForceRefresh={handleRefreshAll}
-        onViewAlerts={handleViewAlerts}
-        onHealthCheck={handleHealthCheck}
-        className="transition-all duration-200 hover:scale-110"
+      {/* Sync Floating Action Button */}
+      <SyncFloatingActionButton
+        onSyncAll={handleSyncAll}
+        onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
+        onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
+        onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
+        onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+        onSyncSealed={handleSyncSealed}
+        onTestBatch={handleTestPricing}
+        className="transition-all duration-200 hover:scale-105"
       />
 
       {/* Command Palette */}
