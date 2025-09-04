@@ -48,11 +48,10 @@ async function fetchJustTcgVariants(
   
   const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
   
-  // JustTCG doesn't have a bulk variants endpoint by game
-  // We need to fetch cards first, then extract variants
-  const url = `${JTCG_BASE}/cards?game=${game}&limit=${limit}&offset=${offset}&include_variants=true`;
+  // Use the correct cards endpoint with game parameter (per official docs)
+  const url = `${JTCG_BASE}/cards?game=${game}&limit=${limit}&offset=${offset}`;
   
-  console.log(`Fetching cards with variants: ${url}`);
+  console.log(`Fetching cards for game ${game}: ${url}`);
   console.log(`Headers: X-API-Key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
   
   while (attempt < maxRetries) {
@@ -236,7 +235,7 @@ serve(async (req) => {
       game = url.searchParams.get("game") || "";
     }
     
-    if (!["pokemon", "pokemon-japan", "mtg"].includes(game)) {
+    if (!["pokemon", "magic-the-gathering", "yugioh", "lorcana-tcg", "one-piece", "digimon", "union-arena"].includes(game)) {
       return new Response(
         JSON.stringify({ success: false, error: "bad_game" }), 
         { 
@@ -327,10 +326,10 @@ serve(async (req) => {
           );
         }
 
-        console.log(`Processing batch ${batchNumber + 1}: fetching variants at offset ${offset}`);
+      console.log(`Processing batch ${batchNumber + 1}: fetching cards at offset ${offset}`);
 
-        // Fetch variants from JustTCG
-        const variants = await fetchJustTcgVariants(game, justTCGApiKey, offset, BATCH_SIZE);
+      // Fetch cards (with embedded variants) from JustTCG
+      const variants = await fetchJustTcgVariants(game, justTCGApiKey, offset, BATCH_SIZE);
         
         if (variants.length === 0) {
           hasMore = false;
