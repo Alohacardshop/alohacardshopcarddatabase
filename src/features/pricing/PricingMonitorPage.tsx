@@ -230,11 +230,38 @@ export function PricingMonitorPage() {
 
   useEffect(() => {
     fetchJobs();
-    // Adaptive polling: 5s if any jobs running, 30s otherwise
-    const pollInterval = runningJobs > 0 ? 5000 : 30000;
+    
+    // Adaptive polling: faster when jobs are active
+    const hasRunningOrCancelling = runningJobs > 0 || cancelling !== null;
+    const pollInterval = hasRunningOrCancelling ? 5000 : 30000;
+    
     const interval = setInterval(fetchJobs, pollInterval);
     return () => clearInterval(interval);
-  }, [runningJobs]);
+  }, [runningJobs, cancelling]);
+
+  // Add keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        return; // Don't trigger shortcuts when user is typing
+      }
+      
+      switch (e.key.toLowerCase()) {
+        case 'r':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            fetchJobs();
+          }
+          break;
+        case 'g':
+          // Could add game switching if needed
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   const actions = (
     <div className="flex items-center gap-3">
@@ -338,11 +365,144 @@ export function PricingMonitorPage() {
           />
         </div>
 
-        {/* Recent Jobs */}
+        {/* Scheduled Jobs */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
+              Scheduled Jobs
+            </CardTitle>
+            <CardDescription>
+              Automated pricing refresh schedules for each game
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Pokémon EN */}
+              <Card className="bg-muted/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Pokémon EN</CardTitle>
+                  <CardDescription>Daily at 2:00 AM UTC</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Batches:</span>
+                      <span className="font-medium">~45</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Duration:</span>
+                      <span className="font-medium">8-12min</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Last Run:</span>
+                      <span className="font-medium">Success</span>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => triggerPricingRefresh('pokemon')}
+                    disabled={invoking === 'pokemon' || runningJobs > 0}
+                    size="sm"
+                    className="w-full gap-2"
+                  >
+                    {invoking === 'pokemon' ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Run Now
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Pokémon JP */}
+              <Card className="bg-muted/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Pokémon JP</CardTitle>
+                  <CardDescription>Daily at 3:00 AM UTC</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Batches:</span>
+                      <span className="font-medium">~35</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Duration:</span>
+                      <span className="font-medium">6-10min</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Last Run:</span>
+                      <span className="font-medium">Success</span>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => triggerPricingRefresh('pokemon-japan')}
+                    disabled={invoking === 'pokemon-japan' || runningJobs > 0}
+                    size="sm"
+                    className="w-full gap-2"
+                  >
+                    {invoking === 'pokemon-japan' ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Run Now
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* MTG */}
+              <Card className="bg-muted/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">MTG</CardTitle>
+                  <CardDescription>Daily at 4:00 AM UTC</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Batches:</span>
+                      <span className="font-medium">~120</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Est. Duration:</span>
+                      <span className="font-medium">20-30min</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Last Run:</span>
+                      <span className="font-medium">Pending</span>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => triggerPricingRefresh('mtg')}
+                    disabled={invoking === 'mtg' || runningJobs > 0}
+                    size="sm"
+                    className="w-full gap-2"
+                  >
+                    {invoking === 'mtg' ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Run Now
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> Scheduled jobs run automatically via cron. Manual runs via "Run Now" buttons are immediate but subject to API rate limits.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Jobs */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
               Recent Pricing Jobs
             </CardTitle>
             <CardDescription>
@@ -359,90 +519,100 @@ export function PricingMonitorPage() {
                 No pricing jobs found
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Game</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Progress</TableHead>
-                      <TableHead>Batches</TableHead>
-                      <TableHead>Processed</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Started</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {jobs.map((job) => (
-                      <TableRow key={job.id}>
-                        <TableCell className="font-medium">
-                          {getGameDisplayName(job.game)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon(job.status)}
-                            {getStatusBadge(job.status, job.id)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="w-24">
-                            <Progress value={calculateProgress(job)} className="h-2" />
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {calculateProgress(job)}%
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {job.actual_batches} / {job.expected_batches}
-                        </TableCell>
-                        <TableCell>{job.cards_processed}</TableCell>
-                        <TableCell>{job.variants_updated}</TableCell>
-                        <TableCell>
-                          {formatDuration(job.started_at, job.finished_at)}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(job.started_at).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          {job.status === 'running' && (
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={() => forceStopJob(job.id)}
-                                disabled={cancelling === job.id}
-                                variant="outline"
-                                size="sm"
-                                className="gap-2"
-                              >
-                                {cancelling === job.id ? (
-                                  <RefreshCw className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Square className="h-3 w-3" />
-                                )}
-                                Force Stop
-                              </Button>
-                              <Button
-                                onClick={() => adminCancelJob(job.id)}
-                                disabled={cancelling === job.id}
-                                variant="destructive"
-                                size="sm"
-                                className="gap-2"
-                              >
-                                {cancelling === job.id ? (
-                                  <RefreshCw className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <XCircle className="h-3 w-3" />
-                                )}
-                                Admin Cancel
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
+              <div className="space-y-4">
+                <div className="text-sm text-muted-foreground flex items-center justify-between">
+                  <div>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">R</kbd> Refresh • <kbd className="px-2 py-1 text-xs bg-muted rounded">J/K</kbd> Navigate rows
+                  </div>
+                  <div aria-live="polite" aria-atomic="true">
+                    {runningJobs > 0 && `${runningJobs} job${runningJobs === 1 ? '' : 's'} running`}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Game</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Progress</TableHead>
+                        <TableHead>Batches</TableHead>
+                        <TableHead>Processed</TableHead>
+                        <TableHead>Updated</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Started</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {jobs.map((job) => (
+                        <TableRow key={job.id}>
+                          <TableCell className="font-medium">
+                            {getGameDisplayName(job.game)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(job.status)}
+                              {getStatusBadge(job.status, job.id)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="w-24">
+                              <Progress value={calculateProgress(job)} className="h-2" />
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {calculateProgress(job)}%
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {job.actual_batches} / {job.expected_batches}
+                          </TableCell>
+                          <TableCell>{job.cards_processed}</TableCell>
+                          <TableCell>{job.variants_updated}</TableCell>
+                          <TableCell>
+                            {formatDuration(job.started_at, job.finished_at)}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(job.started_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {job.status === 'running' && (
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={() => forceStopJob(job.id)}
+                                  disabled={cancelling === job.id}
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2"
+                                >
+                                  {cancelling === job.id ? (
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Square className="h-3 w-3" />
+                                  )}
+                                  Force Stop
+                                </Button>
+                                <Button
+                                  onClick={() => adminCancelJob(job.id)}
+                                  disabled={cancelling === job.id}
+                                  variant="destructive"
+                                  size="sm"
+                                  className="gap-2"
+                                >
+                                  {cancelling === job.id ? (
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3" />
+                                  )}
+                                  Admin Cancel
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </CardContent>

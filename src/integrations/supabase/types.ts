@@ -518,6 +518,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_variants_from_justtcg: {
+        Args: { p_rows: Json }
+        Returns: number
+      }
     }
     Enums: {
       card_condition_enum:

@@ -9,9 +9,17 @@ const corsHeaders = {
 const BATCH_SIZE = 200;
 const CEILING = 470;
 
+interface BatchRequest {
+  id: string;
+  printing?: string;
+  condition?: string;
+}
+
 interface JustTCGCard {
   id: string;
+  cardId?: string;
   variants?: JustTCGVariant[];
+  data?: JustTCGVariant[];
 }
 
 interface JustTCGVariant {
@@ -19,28 +27,42 @@ interface JustTCGVariant {
   condition: string;
   printing: string;
   price?: number;
+  market?: number;
   market_price?: number;
   low_price?: number;
+  low?: number;
   high_price?: number;
+  high?: number;
 }
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchJustTcgBatch(cardIds: string[], apiKey: string): Promise<JustTCGCard[]> {
+async function fetchJustTcgBatch(
+  cardIds: string[],
+  apiKey: string,
+  opts: { printing?: string; condition?: string } = {}
+): Promise<JustTCGCard[]> {
   const maxRetries = 5;
   let attempt = 0;
   
+  // Build request body as array of objects with id, printing, condition
+  const body: BatchRequest[] = cardIds.map(id => ({
+    id,
+    printing: opts.printing ?? 'normal',
+    condition: opts.condition ?? 'near_mint'
+  }));
+  
   while (attempt < maxRetries) {
     try {
-      const response = await fetch('https://api.justtcg.com/v1/cards/batch', {
+      const response = await fetch('https://api.justtcg.com/cards/batch', {
         method: 'POST',
         headers: {
-          'X-API-Key': apiKey,
           'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
         },
-        body: JSON.stringify(cardIds)
+        body: JSON.stringify(body)
       });
 
       if (response.status === 429) {
@@ -53,14 +75,27 @@ async function fetchJustTcgBatch(cardIds: string[], apiKey: string): Promise<Jus
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`JustTCG API error ${response.status}:`, errorText);
-        throw new Error(`JustTCG API error: ${response.status} - ${errorText}`);
+        console.warn(`JustTCG batch non-200 ${response.status}:`, errorText.slice(0, 400));
+        return [];
       }
 
-      return await response.json();
+      const raw = await response.json().catch(() => ({}));
+      
+      // Handle both direct array and { data: [...] } response formats
+      const data = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      
+      if (!Array.isArray(data)) {
+        console.warn('Unexpected JustTCG payload shape:', JSON.stringify(raw).slice(0, 400));
+        return [];
+      }
+      
+      return data as JustTCGCard[];
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
-      if (attempt === maxRetries - 1) throw error;
+      if (attempt === maxRetries - 1) {
+        console.warn('All JustTCG batch attempts failed');
+        return [];
+      }
       
       const backoffMs = Math.min(100 * Math.pow(2, attempt), 5000);
       await sleep(backoffMs);
@@ -69,6 +104,84 @@ async function fetchJustTcgBatch(cardIds: string[], apiKey: string): Promise<Jus
   }
   
   return [];
+}
+
+function mapVariantRow(card: JustTCGCard, variant: JustTCGVariant, cardId: string) {
+  const toCents = (value: any) => Math.round((Number(value) || 0) * 100);
+  
+  return {
+    card_id: cardId,
+    justtcg_variant_id: variant.id,
+    condition: String(variant.condition || 'near_mint').toLowerCase(),
+    printing: String(variant.printing || 'normal').toLowerCase(),
+    price_cents: toCents(variant.price),
+    market_price_cents: toCents(variant.market ?? variant.market_price ?? variant.price),
+    low_price_cents: toCents(variant.low ?? variant.low_price),
+    high_price_cents: toCents(variant.high ?? variant.high_price),
+    last_updated: new Date().toISOString()
+  };
+}
+
+async function writeBatchToDb(supabase: any, cardPayload: JustTCGCard[], cardIdMap: Map<string, string>) {
+  let variantsUpdated = 0;
+  let cardsProcessed = 0;
+  const historyRecords = [];
+  
+  for (const card of cardPayload) {
+    const cardId = cardIdMap.get(card.id || card.cardId || '');
+    if (!cardId) continue;
+    
+    // Get variants from either variants or data array
+    const variants = Array.isArray(card.variants) ? card.variants : 
+                    (Array.isArray(card.data) ? card.data : []);
+    
+    if (variants.length === 0) {
+      cardsProcessed++;
+      continue;
+    }
+    
+    // Map variants to database format
+    const variantRows = variants.map(v => mapVariantRow(card, v, cardId));
+    
+    // Upsert variants using our new RPC
+    if (variantRows.length > 0) {
+      const { data: upCount, error: upErr } = await supabase.rpc('upsert_variants_from_justtcg', {
+        p_rows: variantRows
+      });
+      
+      if (upErr) {
+        console.warn('Variant upsert error:', upErr);
+      } else {
+        variantsUpdated += Number(upCount ?? 0);
+      }
+      
+      // Build price history records
+      for (const row of variantRows) {
+        historyRecords.push({
+          variant_id: row.justtcg_variant_id, // RPC will map this internally
+          price_cents: row.price_cents,
+          low_price_cents: row.low_price_cents,
+          high_price_cents: row.high_price_cents,
+          market_price_cents: row.market_price_cents,
+          recorded_at: row.last_updated
+        });
+      }
+    }
+    
+    cardsProcessed++;
+  }
+  
+  // Insert price history
+  if (historyRecords.length > 0) {
+    const { error: histErr } = await supabase.rpc('insert_variant_price_history', {
+      p_records: historyRecords
+    });
+    if (histErr) {
+      console.warn('History insert error:', histErr);
+    }
+  }
+  
+  return { variantsUpdated, cardsProcessed };
 }
 
 serve(async (req) => {
@@ -114,44 +227,54 @@ serve(async (req) => {
 
     console.log(`Starting variant pricing refresh for game: ${game}`);
 
-    // Count cards for the game
-    const { data: cntRow, error: cntErr } = await supabase.rpc("catalog_v2_count_cards_by_game", { p_game: game });
-    if (cntErr) {
-      console.error('Error counting cards:', cntErr);
-      return new Response(
-        JSON.stringify({ success: false, error: String(cntErr) }), 
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // Fetch all card IDs for this game
+    const allCardIds: string[] = [];
+    const cardIdMap = new Map<string, string>(); // justtcg_card_id -> card_id
+    
+    for (let offset = 0; ; offset += BATCH_SIZE) {
+      const { data: cardsData, error: cardsError } = await supabase.rpc('fetch_cards_with_variants', {
+        p_game: game,
+        p_limit: BATCH_SIZE,
+        p_offset: offset
+      });
+      
+      if (cardsError) {
+        console.error('Error fetching cards:', cardsError);
+        throw new Error(`Failed to fetch cards: ${cardsError.message}`);
+      }
+      
+      if (!cardsData || cardsData.length === 0) break;
+      
+      for (const card of cardsData) {
+        if (card.justtcg_card_id) {
+          allCardIds.push(card.justtcg_card_id);
+          cardIdMap.set(card.justtcg_card_id, card.card_id);
         }
-      );
+      }
+      
+      if (cardsData.length < BATCH_SIZE) break;
     }
     
-    // Parse RPC result correctly
-    const totalCards = Array.isArray(cntRow) ? Number(cntRow[0]?.count || 0) : Number(cntRow || 0);
-    const expectedBatches = Math.ceil(totalCards / BATCH_SIZE);
+    console.log(`Found ${allCardIds.length} cards with JustTCG IDs`);
+    
+    // Create batches for processing
+    const batches: string[][] = [];
+    for (let i = 0; i < allCardIds.length; i += BATCH_SIZE) {
+      batches.push(allCardIds.slice(i, i + BATCH_SIZE));
+    }
+    
+    const expectedBatches = batches.length;
+    console.log(`Expected ${expectedBatches} batches to process`);
 
-    console.log(`Found ${totalCards} cards, expecting ${expectedBatches} batches`);
-
-    // Log the start of this job run using public RPC
-    const { data: jobRunResult, error: jobRunError } = await supabase
-      .rpc('start_pricing_job_run', {
-        p_game: game,
-        p_expected_batches: expectedBatches
-      });
+    // Start job run
+    const { data: jobRunResult, error: jobRunError } = await supabase.rpc('start_pricing_job_run', {
+      p_game: game,
+      p_expected_batches: expectedBatches
+    });
 
     if (jobRunError) {
       console.error('Error creating job run:', jobRunError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create job run',
-          details: jobRunError.message
-        }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      throw new Error(`Failed to create job run: ${jobRunError.message}`);
     }
 
     jobRunId = jobRunResult;
@@ -160,7 +283,11 @@ serve(async (req) => {
     if (expectedBatches > CEILING) {
       await supabase.rpc('finish_pricing_job_run', {
         p_job_id: jobRunId,
-        p_status: 'preflight_ceiling'
+        p_status: 'preflight_ceiling',
+        p_actual_batches: 0,
+        p_cards_processed: 0,
+        p_variants_updated: 0,
+        p_error: `Too many batches: ${expectedBatches} > ${CEILING}`
       });
         
       return new Response(
@@ -176,238 +303,102 @@ serve(async (req) => {
       );
     }
 
-    let batchCount = 0;
     let totalCardsProcessed = 0;
     let totalVariantsUpdated = 0;
 
-    // Process cards in batches
-    for (let offset = 0; offset < totalCards; offset += BATCH_SIZE) {
+    // Process batches
+    for (let i = 0; i < batches.length; i++) {
+      let batchProcessed = 0;
+      let batchUpdated = 0;
+      
       try {
         // Check for cancellation before each batch
-        const { data: isCancelled, error: cancelError } = await supabase
-          .rpc('is_pricing_job_cancelled', { p_job_id: jobRunId });
-
-        if (cancelError) {
-          console.warn('Error checking cancellation status:', cancelError);
-        } else if (isCancelled) {
+        const { data: isCancelled } = await supabase.rpc('is_pricing_job_cancelled', { p_job_id: jobRunId });
+        
+        if (isCancelled) {
           console.log('Job cancellation requested, stopping gracefully');
           await supabase.rpc('finish_pricing_job_run', {
             p_job_id: jobRunId,
             p_status: 'cancelled',
-            p_actual_batches: batchCount,
+            p_actual_batches: i,
             p_cards_processed: totalCardsProcessed,
-            p_variants_updated: totalVariantsUpdated
+            p_variants_updated: totalVariantsUpdated,
+            p_error: null
           });
           
-          return new Response(
-            JSON.stringify({ 
-              success: true, 
-              cancelled: true,
-              game, 
-              actualBatches: batchCount, 
-              cardsProcessed: totalCardsProcessed, 
-              variantsUpdated: totalVariantsUpdated 
-            }), 
-            { 
-              status: 200, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
-        }
-
-        // Fetch batch of cards using public RPC
-        const { data: cardsData, error: cardsError } = await supabase
-          .rpc('fetch_cards_with_variants', {
-            p_game: game,
-            p_limit: BATCH_SIZE,
-            p_offset: offset
+          return new Response(JSON.stringify({ 
+            success: true, 
+            cancelled: true,
+            game, 
+            actualBatches: i, 
+            cardsProcessed: totalCardsProcessed, 
+            variantsUpdated: totalVariantsUpdated 
+          }), { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           });
-
-        if (cardsError) {
-          console.error('Error fetching cards:', cardsError);
-          // Update job run with error
-          await supabase.rpc('finish_pricing_job_run', {
-            p_job_id: jobRunId,
-            p_status: 'error',
-            p_error: `Failed to fetch cards: ${cardsError.message}`
-          });
-          
-          return new Response(
-            JSON.stringify({ 
-              error: 'Failed to fetch cards',
-              details: cardsError.message
-            }),
-            { 
-              status: 500, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            }
-          );
         }
 
-        if (!cardsData || cardsData.length === 0) {
-          console.log(`No cards found in batch ${offset}-${offset + BATCH_SIZE}`);
-          batchCount++;
-          continue;
-        }
+        console.log(`Processing batch ${i + 1}/${batches.length}: ${batches[i].length} cards`);
 
-        // Extract unique JustTCG card IDs
-        const cardIds = [...new Set(cardsData
-          .filter(card => card.justtcg_card_id)
-          .map(card => card.justtcg_card_id))];
+        // Fetch pricing data from JustTCG
+        const justTcgCards = await fetchJustTcgBatch(batches[i], justTCGApiKey, {
+          printing: 'normal',
+          condition: 'near_mint'
+        });
 
-        if (cardIds.length === 0) {
-          totalCardsProcessed += cardsData.length;
-          batchCount++;
-          continue;
-        }
-
-        console.log(`Processing batch ${batchCount + 1}: ${cardIds.length} unique cards`);
-
-        // Fetch pricing from JustTCG
-        const pricingData = await fetchJustTcgBatch(cardIds, justTCGApiKey);
+        // Write batch to database
+        const result = await writeBatchToDb(supabase, justTcgCards, cardIdMap);
+        batchProcessed = result.cardsProcessed;
+        batchUpdated = result.variantsUpdated;
         
-        // Map to variant updates for public.variants table
-        const variantUpserts: any[] = [];
-
-        for (const card of pricingData) {
-          if (!card.variants) continue;
-          
-          for (const variant of card.variants) {
-            // Find matching card from our database
-            const dbCard = cardsData.find(c => c.justtcg_card_id === card.id);
-            
-            if (!dbCard) continue;
-
-            // Normalize condition and printing using database functions
-            const { data: normalizedCondition } = await supabase
-              .rpc('normalize_condition', { api_condition: variant.condition });
-            
-            const { data: normalizedPrinting } = await supabase
-              .rpc('normalize_printing', { api_printing: variant.printing || 'normal' });
-
-            const variantUpdate = {
-              card_id: dbCard.card_id,
-              justtcg_variant_id: variant.id,
-              condition: normalizedCondition || 'near_mint',
-              printing: normalizedPrinting || 'normal',
-              price_cents: variant.price ? Math.round(variant.price * 100) : null,
-              market_price_cents: variant.market_price ? Math.round(variant.market_price * 100) : null,
-              low_price_cents: variant.low_price ? Math.round(variant.low_price * 100) : null,
-              high_price_cents: variant.high_price ? Math.round(variant.high_price * 100) : null,
-              last_updated: new Date().toISOString()
-            };
-
-            variantUpserts.push(variantUpdate);
-          }
-        }
-
-        // Update variants in public.variants table
-        if (variantUpserts.length > 0) {
-          const { error: variantError } = await supabase
-            .from("variants")
-            .upsert(variantUpserts, { 
-              onConflict: 'card_id,condition,printing' 
-            });
-
-          if (variantError) {
-            console.error('Error upserting variants:', variantError);
-          } else {
-            totalVariantsUpdated += variantUpserts.length;
-            
-            // Insert price history for successfully upserted variants
-            try {
-              // Query for the actual variant UUIDs that were just upserted
-              const { data: variantIds, error: queryError } = await supabase
-                .from('variants')
-                .select('id, card_id, condition, printing')
-                .in('card_id', variantUpserts.map(v => v.card_id));
-
-              if (!queryError && variantIds) {
-                const priceHistoryInserts = [];
-                
-                for (const upsertedVariant of variantUpserts) {
-                  const matchingVariant = variantIds.find(v => 
-                    v.card_id === upsertedVariant.card_id &&
-                    v.condition === upsertedVariant.condition &&
-                    v.printing === upsertedVariant.printing
-                  );
-                  
-                  if (matchingVariant) {
-                    priceHistoryInserts.push({
-                      variant_id: matchingVariant.id,
-                      price_cents: upsertedVariant.price_cents,
-                      low_price_cents: upsertedVariant.low_price_cents,
-                      high_price_cents: upsertedVariant.high_price_cents,
-                      market_price_cents: upsertedVariant.market_price_cents,
-                      recorded_at: new Date().toISOString()
-                    });
-                  }
-                }
-
-                if (priceHistoryInserts.length > 0) {
-                  const { error: historyError } = await supabase
-                    .rpc('insert_variant_price_history', {
-                      p_records: priceHistoryInserts
-                    });
-
-                  if (historyError) {
-                    console.warn('Error inserting price history:', historyError);
-                  }
-                }
-              }
-            } catch (historyError) {
-              console.warn('Error processing price history:', historyError);
-            }
-          }
-        }
-
-        totalCardsProcessed += cardsData.length;
-        batchCount++;
-
-        console.log(`Batch ${batchCount} complete: ${variantUpserts.length} variants updated`);
-
-        // Update progress after each batch (heartbeat)
+        console.log(`Batch ${i + 1} complete: ${batchProcessed} cards, ${batchUpdated} variants`);
+      } catch (error) {
+        console.error(`Batch ${i + 1} error:`, error);
+        // Continue with next batch
+      } finally {
+        // Always update progress
+        totalCardsProcessed += batchProcessed;
+        totalVariantsUpdated += batchUpdated;
+        
         await supabase.rpc('update_pricing_job_progress', {
           p_job_id: jobRunId,
-          p_actual_batches: batchCount,
+          p_actual_batches: i + 1,
           p_cards_processed: totalCardsProcessed,
           p_variants_updated: totalVariantsUpdated
         });
-
-        // Rate limiting
-        await sleep(125);
-
-      } catch (error) {
-        console.error(`Error processing batch ${offset}-${offset + BATCH_SIZE}:`, error);
-        batchCount++;
       }
+
+      // Rate limiting
+      await sleep(125);
     }
 
-    // Mark job as complete using public RPC
+    // Determine final status - if no variants updated, mark as error
+    const finalStatus = (totalCardsProcessed === 0 && totalVariantsUpdated === 0) ? 'error' : 'completed';
+    const finalError = finalStatus === 'error' ? 'No pricing returned from API (unexpected payload shape or empty results).' : null;
+
     await supabase.rpc('finish_pricing_job_run', {
       p_job_id: jobRunId,
-      p_status: 'completed',
-      p_actual_batches: batchCount,
+      p_status: finalStatus,
+      p_actual_batches: batches.length,
       p_cards_processed: totalCardsProcessed,
-      p_variants_updated: totalVariantsUpdated
+      p_variants_updated: totalVariantsUpdated,
+      p_error: finalError
     });
 
-    console.log(`Variant pricing refresh completed: ${totalCardsProcessed} cards processed, ${totalVariantsUpdated} variants updated`);
+    console.log(`Pricing refresh ${finalStatus}: ${totalCardsProcessed} cards processed, ${totalVariantsUpdated} variants updated`);
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        game, 
-        expectedBatches, 
-        actualBatches: batchCount, 
-        cardsProcessed: totalCardsProcessed, 
-        variantsUpdated: totalVariantsUpdated 
-      }), 
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({ 
+      success: true, 
+      game, 
+      expectedBatches, 
+      actualBatches: batches.length, 
+      cardsProcessed: totalCardsProcessed, 
+      variantsUpdated: totalVariantsUpdated 
+    }), { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
 
   } catch (error) {
     console.error('Error in pricing refresh:', error);
@@ -422,19 +413,19 @@ serve(async (req) => {
         await supabase.rpc('finish_pricing_job_run', {
           p_job_id: jobRunId,
           p_status: 'error',
-          p_error: error.message || 'Unknown error occurred'
+          p_actual_batches: 0,
+          p_cards_processed: 0,
+          p_variants_updated: 0,
+          p_error: String(error).slice(0, 500)
         });
       } catch (updateError) {
         console.error('Error updating job status:', updateError);
       }
     }
 
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), { 
+      status: 500, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 });
