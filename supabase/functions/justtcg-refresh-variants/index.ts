@@ -14,10 +14,11 @@ const VARIANT_LIMIT = 700; // Reduced from 1000 to ensure completion within time
 // Game mapping from UI names to API format
 const GAME_MAP: Record<string, string> = {
   'pokemon': 'pokemon',
+  'pokemon-japan': 'pokemon-japan',
   'Pokémon EN': 'pokemon',
-  'Pokémon JP': 'pokemon',
+  'Pokémon JP': 'pokemon-japan',
   'Pokemon EN': 'pokemon', 
-  'Pokemon JP': 'pokemon',
+  'Pokemon JP': 'pokemon-japan',
   'magic-the-gathering': 'magic-the-gathering',
   'yugioh': 'yugioh',
   'lorcana-tcg': 'lorcana-tcg',
@@ -199,12 +200,12 @@ serve(async (req) => {
     const game = GAME_MAP[rawGame] || rawGame;
     console.log(`Game mapping: "${rawGame}" -> "${game}"`);
     
-    if (!["pokemon", "magic-the-gathering", "yugioh", "lorcana-tcg", "one-piece", "digimon", "union-arena"].includes(game)) {
+    if (!["pokemon", "pokemon-japan", "magic-the-gathering", "yugioh", "lorcana-tcg", "one-piece", "digimon", "union-arena"].includes(game)) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           error: "bad_game",
-          message: `Unsupported game: ${rawGame}. Supported games: pokemon, magic-the-gathering, yugioh, lorcana-tcg, one-piece, digimon, union-arena`
+          message: `Unsupported game: ${rawGame}. Supported games: pokemon, pokemon-japan, magic-the-gathering, yugioh, lorcana-tcg, one-piece, digimon, union-arena`
         }), 
         { 
           status: 400, 
@@ -215,12 +216,49 @@ serve(async (req) => {
 
     console.log(`Starting variant-based pricing refresh for game: ${game}`);
 
-    // Query database for variants that need price updates
-    console.log(`Querying database for ${game} variants...`);
+    // Get cards for this specific game using RPC
+    console.log(`Fetching cards for game: ${game}...`);
+    
+    const { data: gameCards, error: cardsError } = await supabase
+      .rpc('fetch_cards_with_variants', { 
+        p_game: game, 
+        p_limit: VARIANT_LIMIT,
+        p_offset: 0 
+      });
+
+    if (cardsError) {
+      console.error('Failed to fetch game cards:', cardsError);
+      throw new Error(`Failed to fetch cards for game ${game}: ${cardsError.message}`);
+    }
+
+    if (!gameCards || gameCards.length === 0) {
+      console.log(`No cards found for game: ${game}`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          game,
+          message: `No cards found for game: ${game}`,
+          cardsFound: 0
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log(`Found ${gameCards.length} cards for game: ${game}`);
+
+    // Get card IDs for filtering variants
+    const cardIds = gameCards.map(card => card.card_id);
+
+    // Query database for variants that need price updates (filtered by game cards)
+    console.log(`Querying variants for ${cardIds.length} cards...`);
     
     const { data: variants, error: queryError } = await supabase
       .from('variants')
       .select('id, justtcg_variant_id, price_cents, last_updated, card_id')
+      .in('card_id', cardIds)
       .not('justtcg_variant_id', 'is', null)
       .lt('last_updated', new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Only variants not updated in last hour
       .order('last_updated', { ascending: true })
