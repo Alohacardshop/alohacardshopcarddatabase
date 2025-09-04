@@ -429,7 +429,9 @@ export type Database = {
         }[]
       }
       get_variants_for_pricing_update: {
-        Args: { p_card_ids: string[]; p_limit?: number }
+        Args:
+          | { p_card_ids: string[] }
+          | { p_card_ids: string[]; p_limit?: number }
         Returns: {
           card_id: string
           id: string

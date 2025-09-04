@@ -6,10 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 20; // JustTCG API limit for variant queries
+const BATCH_SIZE = 100; // Increased from 20 - API supports up to 200 cards per request
 const CEILING = 470;
-const TIME_LIMIT_MS = 4.5 * 60 * 1000; // 4.5 minutes in milliseconds
-const VARIANT_LIMIT = 700; // Reduced from 1000 to ensure completion within time window
+const TIME_LIMIT_MS = 4.0 * 60 * 1000; // 4 minutes to stay safely under 5min limit
+const MAX_REQUESTS_PER_MINUTE = 400; // Stay under your 500/min API limit (80% capacity)
+// VARIANT_LIMIT removed - process ALL variants that need updates
 
 // Game mapping from UI names to API format
 const GAME_MAP: Record<string, string> = {
@@ -222,7 +223,7 @@ serve(async (req) => {
     const { data: gameCards, error: cardsError } = await supabase
       .rpc('fetch_cards_with_variants', { 
         p_game: game, 
-        p_limit: VARIANT_LIMIT,
+        p_limit: 10000, // Get more cards initially to see actual scope
         p_offset: 0 
       });
 
@@ -258,8 +259,8 @@ serve(async (req) => {
     // Use RPC to avoid URL length limits when filtering by many card IDs
     const { data: variants, error: queryError } = await supabase
       .rpc('get_variants_for_pricing_update', {
-        p_card_ids: cardIds,
-        p_limit: VARIANT_LIMIT
+        p_card_ids: cardIds
+        // No limit - process ALL variants that need updating
       });
 
     if (queryError) {
@@ -307,24 +308,45 @@ serve(async (req) => {
     let totalProcessed = 0;
     let totalUpdated = 0;
     let totalErrors = 0;
+    let requestCount = 0;
+    let minuteStartTime = Date.now();
 
     // Process each batch
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
-      console.log(`Processing batch ${batchIndex + 1}/${batches.length}...`);
+      console.log(`Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} variants)...`);
+      console.log(`📈 Progress: ${totalProcessed}/${variants.length} variants processed (${Math.round(totalProcessed/variants.length*100)}%)`);
 
       try {
+        // Rate limiting: Check if we need to wait to stay under API limits
+        const currentTime = Date.now();
+        const timeInCurrentMinute = currentTime - minuteStartTime;
+        
+        if (timeInCurrentMinute >= 60000) {
+          // Reset rate limiting counter every minute
+          minuteStartTime = currentTime;
+          requestCount = 0;
+        }
+        
+        if (requestCount >= MAX_REQUESTS_PER_MINUTE) {
+          const waitTime = 60000 - timeInCurrentMinute;
+          console.log(`⏳ Rate limiting: waiting ${Math.round(waitTime/1000)}s to respect ${MAX_REQUESTS_PER_MINUTE}/min limit`);
+          await sleep(waitTime);
+          minuteStartTime = Date.now();
+          requestCount = 0;
+        }
+
         // Time-guard: Check if we're approaching the time limit
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime > TIME_LIMIT_MS) {
-          console.log(`Time limit approaching (${elapsedTime}ms), stopping gracefully to avoid timeout`);
+          console.log(`⏰ Time limit approaching (${Math.round(elapsedTime/1000)}s), stopping gracefully`);
           await supabase.rpc('finish_pricing_job_run', {
             p_job_id: jobRunId,
             p_status: 'preflight_ceiling',
             p_actual_batches: batchIndex,
             p_cards_processed: totalProcessed,
             p_variants_updated: totalUpdated,
-            p_error: `Time limit reached after ${Math.floor(elapsedTime/1000)}s. Job stopped to avoid Edge Function timeout.`
+            p_error: `Time limit reached after ${Math.floor(elapsedTime/1000)}s. Processed ${totalProcessed}/${variants.length} variants.`
           });
           
           return new Response(JSON.stringify({ 
@@ -332,9 +354,10 @@ serve(async (req) => {
             preflight_ceiling: true,
             game, 
             actualBatches: batchIndex, 
+            totalFound: variants.length,
             cardsProcessed: totalProcessed, 
             variantsUpdated: totalUpdated,
-            message: `Job stopped due to time limit. Processed ${batchIndex}/${batches.length} batches.`
+            message: `Partial completion: processed ${totalProcessed}/${variants.length} variants before time limit`
           }), { 
             status: 200, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -379,6 +402,9 @@ serve(async (req) => {
         }
 
         // Fetch pricing from JustTCG
+        console.log(`🔄 API Request ${requestCount + 1}/${MAX_REQUESTS_PER_MINUTE} this minute - fetching pricing for ${variantIds.length} variants`);
+        
+        requestCount++; // Increment rate limiting counter
         const pricingData = await fetchVariantPricing(variantIds, justTCGApiKey);
         
         console.log(`JustTCG returned pricing for ${pricingData.length} variants in batch ${batchIndex + 1}`);
@@ -421,9 +447,9 @@ serve(async (req) => {
           p_variants_updated: totalUpdated
         });
 
-        // Rate limiting - delay between batches
+        // Add delay between batches to be respectful to API (only if not rate limited)
         if (batchIndex < batches.length - 1) {
-          await sleep(1000); // 1 second delay
+          await sleep(100); // Small delay between batches
         }
 
       } catch (batchError) {
@@ -436,6 +462,7 @@ serve(async (req) => {
     const finalStatus = totalErrors === 0 ? 'completed' : (totalUpdated > 0 ? 'completed' : 'error');
     const finalError = finalStatus === 'error' ? `${totalErrors} variants failed to update` : null;
 
+    // Finish the job run successfully
     await supabase.rpc('finish_pricing_job_run', {
       p_job_id: jobRunId,
       p_status: finalStatus,
@@ -445,14 +472,22 @@ serve(async (req) => {
       p_error: finalError
     });
 
+    const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+    console.log(`✅ Variant pricing refresh completed successfully in ${elapsedSeconds}s!`);
+    console.log(`📊 Final stats: ${totalUpdated}/${totalProcessed} variants updated from ${variants.length} total found`);
+    console.log(`🔥 API efficiency: Used ${requestCount} requests (~${Math.round(requestCount/MAX_REQUESTS_PER_MINUTE*100)}% of rate limit capacity)`);
+
     const result = {
       success: true,
       game,
+      totalFound: variants.length,
       batchesProcessed: batches.length,
       variantsProcessed: totalProcessed,
       variantsUpdated: totalUpdated,
+      apiRequestsUsed: requestCount,
       errors: totalErrors,
-      message: `Successfully updated ${totalUpdated} of ${totalProcessed} variants`
+      processingTimeSeconds: elapsedSeconds,
+      message: `Successfully processed ${totalProcessed} variants in ${batches.length} batches (${elapsedSeconds}s)`
     };
 
     console.log('Variant pricing refresh completed:', result);
