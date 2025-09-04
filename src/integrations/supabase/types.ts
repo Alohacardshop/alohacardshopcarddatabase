@@ -428,6 +428,16 @@ export type Database = {
           variants_updated: number
         }[]
       }
+      get_variants_for_pricing_update: {
+        Args: { p_card_ids: string[]; p_limit?: number }
+        Returns: {
+          card_id: string
+          id: string
+          justtcg_variant_id: string
+          last_updated: string
+          price_cents: number
+        }[]
+      }
       grant_role_by_email: {
         Args: { p_email: string; p_role: string }
         Returns: undefined
