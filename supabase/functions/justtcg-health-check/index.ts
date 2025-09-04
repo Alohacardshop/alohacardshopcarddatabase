@@ -42,7 +42,8 @@ serve(async (req) => {
     const gamesResponse = await fetch(gamesUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${justTCGApiKey}`,
+        'X-API-Key': justTCGApiKey,
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
       }
     });
@@ -81,7 +82,8 @@ serve(async (req) => {
     const variantsResponse = await fetch(variantsUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${justTCGApiKey}`,
+        'X-API-Key': justTCGApiKey,
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
       }
     });

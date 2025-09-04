@@ -41,6 +41,19 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Accept multiple response shapes from JustTCG
+function extractVariants(json: any): JustTCGVariant[] {
+  if (!json) return [];
+  // Shape 1: { data: [...] }
+  if (Array.isArray(json.data)) return json.data as JustTCGVariant[];
+  // Shape 2: { variants: [...] }
+  if (Array.isArray(json.variants)) return json.variants as JustTCGVariant[];
+  // Shape 3: top-level array
+  if (Array.isArray(json)) return json as JustTCGVariant[];
+  // Unknown shape
+  return [];
+}
+
 async function fetchJustTcgVariants(
   game: string,
   apiKey: string,
@@ -58,7 +71,9 @@ async function fetchJustTcgVariants(
       const response = await fetch(url, {
         method: 'GET',
         headers: {
+          'X-API-Key': apiKey,
           'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
         }
       });
@@ -83,9 +98,12 @@ async function fetchJustTcgVariants(
         return [];
       }
 
-      const apiResponse: JustTCGApiResponse = await response.json();
-      return apiResponse.data || [];
-      
+      const raw = await response.json();
+      const variants = extractVariants(raw);
+      if (variants.length === 0) {
+        console.warn('No variants parsed from API response. Top-level keys:', Object.keys(raw || {}));
+      }
+      return variants;
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxRetries - 1) {
