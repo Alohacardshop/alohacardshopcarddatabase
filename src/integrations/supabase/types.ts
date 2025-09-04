@@ -359,6 +359,21 @@ export type Database = {
           count: number
         }[]
       }
+      get_pricing_jobs_recent: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          actual_batches: number
+          cards_processed: number
+          error: string
+          expected_batches: number
+          finished_at: string
+          game: string
+          id: string
+          started_at: string
+          status: string
+          variants_updated: number
+        }[]
+      }
       grant_role_by_email: {
         Args: { p_email: string; p_role: string }
         Returns: undefined

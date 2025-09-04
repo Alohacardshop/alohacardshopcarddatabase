@@ -26,15 +26,14 @@ export function PricingJobMonitor() {
 
   const fetchJobs = async () => {
     try {
-      // Use RPC to bypass schema restrictions since ops.pricing_job_runs isn't in types
-      const { data: jobsData, error } = await supabase.rpc('get_pricing_jobs_recent');
+      // Temporarily bypass type system since new function isn't in types yet
+      const { data: jobsData, error } = await (supabase as any).rpc('get_pricing_jobs_recent');
 
       if (error) {
         console.error('Error fetching pricing jobs:', error);
-        // Fallback to empty array for now
         setJobs([]);
       } else {
-        setJobs(jobsData || []);
+        setJobs(jobsData as PricingJob[] || []);
       }
     } catch (error) {
       console.error('Error fetching pricing jobs:', error);
