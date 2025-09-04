@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 100;
 const CEILING = 470;
 
 interface JustTCGVariant {
@@ -59,6 +59,7 @@ async function fetchJustTcgVariants(
       const response = await fetch(url, {
         method: 'GET',
         headers: {
+          'x-api-key': apiKey,
           'X-API-Key': apiKey,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
