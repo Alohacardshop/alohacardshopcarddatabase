@@ -390,6 +390,124 @@ export type Database = {
           },
         ]
       }
+      sealed_products: {
+        Row: {
+          category: Database["public"]["Enums"]["sealed_category_enum"]
+          created_at: string
+          description: string | null
+          details: Json | null
+          game_id: string
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          justtcg_product_id: string | null
+          msrp_cents: number | null
+          name: string
+          release_date: string | null
+          sku: string | null
+          tcgplayer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          category: Database["public"]["Enums"]["sealed_category_enum"]
+          created_at?: string
+          description?: string | null
+          details?: Json | null
+          game_id: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          justtcg_product_id?: string | null
+          msrp_cents?: number | null
+          name: string
+          release_date?: string | null
+          sku?: string | null
+          tcgplayer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["sealed_category_enum"]
+          created_at?: string
+          description?: string | null
+          details?: Json | null
+          game_id?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          justtcg_product_id?: string | null
+          msrp_cents?: number | null
+          name?: string
+          release_date?: string | null
+          sku?: string | null
+          tcgplayer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sealed_products_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sealed_variants: {
+        Row: {
+          condition: Database["public"]["Enums"]["sealed_condition_enum"]
+          created_at: string
+          high_price_cents: number | null
+          id: string
+          is_available: boolean | null
+          justtcg_variant_id: string | null
+          language: string | null
+          last_updated: string | null
+          low_price_cents: number | null
+          market_price_cents: number | null
+          price_cents: number | null
+          sealed_product_id: string
+          updated_at: string
+        }
+        Insert: {
+          condition?: Database["public"]["Enums"]["sealed_condition_enum"]
+          created_at?: string
+          high_price_cents?: number | null
+          id?: string
+          is_available?: boolean | null
+          justtcg_variant_id?: string | null
+          language?: string | null
+          last_updated?: string | null
+          low_price_cents?: number | null
+          market_price_cents?: number | null
+          price_cents?: number | null
+          sealed_product_id: string
+          updated_at?: string
+        }
+        Update: {
+          condition?: Database["public"]["Enums"]["sealed_condition_enum"]
+          created_at?: string
+          high_price_cents?: number | null
+          id?: string
+          is_available?: boolean | null
+          justtcg_variant_id?: string | null
+          language?: string | null
+          last_updated?: string | null
+          low_price_cents?: number | null
+          market_price_cents?: number | null
+          price_cents?: number | null
+          sealed_product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sealed_variants_sealed_product_id_fkey"
+            columns: ["sealed_product_id"]
+            isOneToOne: false
+            referencedRelation: "sealed_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sets: {
         Row: {
           card_count: number | null
@@ -518,6 +636,7 @@ export type Database = {
           id: string
           is_available: boolean | null
           justtcg_variant_id: string
+          language: string | null
           last_updated: string | null
           low_price_cents: number | null
           market_price_cents: number | null
@@ -533,6 +652,7 @@ export type Database = {
           id?: string
           is_available?: boolean | null
           justtcg_variant_id: string
+          language?: string | null
           last_updated?: string | null
           low_price_cents?: number | null
           market_price_cents?: number | null
@@ -548,6 +668,7 @@ export type Database = {
           id?: string
           is_available?: boolean | null
           justtcg_variant_id?: string
+          language?: string | null
           last_updated?: string | null
           low_price_cents?: number | null
           market_price_cents?: number | null
@@ -607,10 +728,18 @@ export type Database = {
       }
       pricing_stats_mv: {
         Row: {
-          avg_duration_minutes: number | null
-          jobs_today: number | null
-          success_rate: number | null
-          variants_processed_today: number | null
+          avg_card_price_cents: number | null
+          avg_job_duration_minutes: number | null
+          avg_sealed_price_cents: number | null
+          cards_with_pricing: number | null
+          last_updated: string | null
+          sealed_with_pricing: number | null
+          sets_with_pricing: number | null
+          success_rate_percentage: number | null
+          successful_jobs: number | null
+          total_cards: number | null
+          total_jobs_last_30_days: number | null
+          total_sealed_products: number | null
         }
         Relationships: []
       }
@@ -763,6 +892,10 @@ export type Database = {
         Args: { api_printing: string }
         Returns: Database["public"]["Enums"]["card_printing_enum"]
       }
+      normalize_sealed_condition: {
+        Args: { api_condition: string }
+        Returns: Database["public"]["Enums"]["sealed_condition_enum"]
+      }
       queue_variant_retry: {
         Args: { p_error_message: string; p_game: string; p_variant_id: string }
         Returns: undefined
@@ -825,6 +958,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_sealed_variants_from_justtcg: {
+        Args: { p_rows: Json }
+        Returns: number
+      }
       upsert_variants_from_justtcg: {
         Args: { p_rows: Json }
         Returns: number
@@ -862,6 +999,26 @@ export type Database = {
         | "bundle"
         | "collection"
         | "other"
+      sealed_category_enum:
+        | "booster_box"
+        | "elite_trainer_box"
+        | "starter_deck"
+        | "structure_deck"
+        | "theme_deck"
+        | "collector_box"
+        | "bundle"
+        | "collection"
+        | "tin"
+        | "blister_pack"
+        | "booster_pack"
+        | "precon_deck"
+        | "battle_deck"
+        | "special_set"
+      sealed_condition_enum:
+        | "factory_sealed"
+        | "opened_box"
+        | "damaged_package"
+        | "resealed"
       sync_job_status_enum: "queued" | "running" | "completed" | "failed"
       sync_job_type_enum: "games" | "sets" | "cards" | "refresh_variants"
       sync_status_enum: "pending" | "syncing" | "completed" | "failed"
@@ -1025,6 +1182,28 @@ export const Constants = {
         "bundle",
         "collection",
         "other",
+      ],
+      sealed_category_enum: [
+        "booster_box",
+        "elite_trainer_box",
+        "starter_deck",
+        "structure_deck",
+        "theme_deck",
+        "collector_box",
+        "bundle",
+        "collection",
+        "tin",
+        "blister_pack",
+        "booster_pack",
+        "precon_deck",
+        "battle_deck",
+        "special_set",
+      ],
+      sealed_condition_enum: [
+        "factory_sealed",
+        "opened_box",
+        "damaged_package",
+        "resealed",
       ],
       sync_job_status_enum: ["queued", "running", "completed", "failed"],
       sync_job_type_enum: ["games", "sets", "cards", "refresh_variants"],
