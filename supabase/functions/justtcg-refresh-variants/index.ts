@@ -37,10 +37,10 @@ async function fetchJustTcgBatch(cardIds: string[], apiKey: string): Promise<Jus
       const response = await fetch('https://api.justtcg.com/v1/cards/batch', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'X-API-Key': apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ids: cardIds })
+        body: JSON.stringify(cardIds)
       });
 
       if (response.status === 429) {
@@ -52,7 +52,9 @@ async function fetchJustTcgBatch(cardIds: string[], apiKey: string): Promise<Jus
       }
 
       if (!response.ok) {
-        throw new Error(`JustTCG API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`JustTCG API error ${response.status}:`, errorText);
+        throw new Error(`JustTCG API error: ${response.status} - ${errorText}`);
       }
 
       return await response.json();
@@ -234,7 +236,6 @@ serve(async (req) => {
         
         // Map to variant updates for public.variants table
         const variantUpserts: any[] = [];
-        const priceHistoryInserts: any[] = [];
 
         for (const card of pricingData) {
           if (!card.variants) continue;
@@ -245,11 +246,18 @@ serve(async (req) => {
             
             if (!dbCard) continue;
 
+            // Normalize condition and printing using database functions
+            const { data: normalizedCondition } = await supabase
+              .rpc('normalize_condition', { api_condition: variant.condition });
+            
+            const { data: normalizedPrinting } = await supabase
+              .rpc('normalize_printing', { api_printing: variant.printing || 'normal' });
+
             const variantUpdate = {
               card_id: dbCard.card_id,
               justtcg_variant_id: variant.id,
-              condition: variant.condition.toLowerCase().replace(' ', '_'),
-              printing: variant.printing.toLowerCase().replace(' ', '_') || 'normal',
+              condition: normalizedCondition || 'near_mint',
+              printing: normalizedPrinting || 'normal',
               price_cents: variant.price ? Math.round(variant.price * 100) : null,
               market_price_cents: variant.market_price ? Math.round(variant.market_price * 100) : null,
               low_price_cents: variant.low_price ? Math.round(variant.low_price * 100) : null,
@@ -258,16 +266,6 @@ serve(async (req) => {
             };
 
             variantUpserts.push(variantUpdate);
-
-            // History entry for catalog_v2 schema
-            priceHistoryInserts.push({
-              variant_id: `${dbCard.card_id}-${variant.id}`,
-              price_cents: variantUpdate.price_cents,
-              low_price_cents: variantUpdate.low_price_cents,
-              high_price_cents: variantUpdate.high_price_cents,
-              market_price_cents: variantUpdate.market_price_cents,
-              recorded_at: new Date().toISOString()
-            });
           }
         }
 
@@ -283,19 +281,51 @@ serve(async (req) => {
             console.error('Error upserting variants:', variantError);
           } else {
             totalVariantsUpdated += variantUpserts.length;
-          }
-        }
+            
+            // Insert price history for successfully upserted variants
+            try {
+              // Query for the actual variant UUIDs that were just upserted
+              const { data: variantIds, error: queryError } = await supabase
+                .from('variants')
+                .select('id, card_id, condition, printing')
+                .in('card_id', variantUpserts.map(v => v.card_id));
 
-        // Insert variant price history records using public RPC
-        if (priceHistoryInserts.length > 0) {
-          const { error: historyError } = await supabase
-            .rpc('insert_variant_price_history', {
-              p_records: priceHistoryInserts
-            });
+              if (!queryError && variantIds) {
+                const priceHistoryInserts = [];
+                
+                for (const upsertedVariant of variantUpserts) {
+                  const matchingVariant = variantIds.find(v => 
+                    v.card_id === upsertedVariant.card_id &&
+                    v.condition === upsertedVariant.condition &&
+                    v.printing === upsertedVariant.printing
+                  );
+                  
+                  if (matchingVariant) {
+                    priceHistoryInserts.push({
+                      variant_id: matchingVariant.id,
+                      price_cents: upsertedVariant.price_cents,
+                      low_price_cents: upsertedVariant.low_price_cents,
+                      high_price_cents: upsertedVariant.high_price_cents,
+                      market_price_cents: upsertedVariant.market_price_cents,
+                      recorded_at: new Date().toISOString()
+                    });
+                  }
+                }
 
-          if (historyError) {
-            console.warn('Error inserting price history:', historyError);
-            // Don't fail the entire batch for history insertion errors
+                if (priceHistoryInserts.length > 0) {
+                  const { error: historyError } = await supabase
+                    .rpc('insert_variant_price_history', {
+                      p_records: priceHistoryInserts
+                    });
+
+                  if (historyError) {
+                    console.warn('Error inserting price history:', historyError);
+                  }
+                }
+              }
+            } catch (historyError) {
+              console.warn('Error processing price history:', historyError);
+            }
           }
         }
 
