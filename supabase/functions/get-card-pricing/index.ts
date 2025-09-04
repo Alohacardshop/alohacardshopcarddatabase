@@ -80,6 +80,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/**
+ * 🔄 BACKWARDS COMPATIBILITY: Normalize Magic card IDs from old to new format
+ */
+async function normalizeMagicCardId(supabase: any, cardId: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.rpc('normalize_magic_card_id', { card_id: cardId });
+    if (error) {
+      console.warn('Failed to normalize card ID:', error);
+      return cardId; // Fallback to original
+    }
+    return data || cardId;
+  } catch (error) {
+    console.warn('Exception normalizing card ID:', error);
+    return cardId; // Fallback to original
+  }
+}
+
 interface PricingRequest {
   cardId: string
   condition?: string
