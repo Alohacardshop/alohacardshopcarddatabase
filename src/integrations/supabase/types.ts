@@ -359,6 +359,24 @@ export type Database = {
           count: number
         }[]
       }
+      fetch_cards_with_variants: {
+        Args: { p_game: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          card_id: string
+          justtcg_card_id: string
+        }[]
+      }
+      finish_pricing_job_run: {
+        Args: {
+          p_actual_batches?: number
+          p_cards_processed?: number
+          p_error?: string
+          p_job_id: string
+          p_status: string
+          p_variants_updated?: number
+        }
+        Returns: undefined
+      }
       get_pricing_jobs_recent: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -406,6 +424,10 @@ export type Database = {
         Args: { r: string; uid: string }
         Returns: boolean
       }
+      insert_variant_price_history: {
+        Args: { p_records: Json }
+        Returns: undefined
+      }
       normalize_condition: {
         Args: { api_condition: string }
         Returns: Database["public"]["Enums"]["card_condition_enum"]
@@ -442,6 +464,10 @@ export type Database = {
       show_trgm: {
         Args: { "": string }
         Returns: string[]
+      }
+      start_pricing_job_run: {
+        Args: { p_expected_batches: number; p_game: string }
+        Returns: string
       }
     }
     Enums: {

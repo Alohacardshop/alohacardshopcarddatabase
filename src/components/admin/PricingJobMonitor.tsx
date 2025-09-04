@@ -51,18 +51,25 @@ export function PricingJobMonitor() {
       });
 
       if (error) {
-        throw error;
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Edge function failed');
+      }
+      
+      if (data?.error) {
+        console.error('API error:', data.error, data.details);
+        throw new Error(data.details || data.error || 'API request failed');
       }
       
       if (data?.success) {
-        toast.success(`Pricing refresh started for ${game}`);
+        toast.success(`Pricing refresh started for ${game.replace('-', ' ')}`);
         setTimeout(fetchJobs, 1000); // Refresh after 1 second
       } else {
         toast.error(data?.error || 'Failed to start pricing refresh');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error triggering pricing refresh:', error);
-      toast.error('Failed to trigger pricing refresh');
+      const message = error?.message || 'Failed to trigger pricing refresh';
+      toast.error(`Failed to start pricing refresh: ${message}`);
     }
   };
 
