@@ -136,6 +136,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pricing_job_control: {
+        Row: {
+          cancel_requested: boolean
+          job_id: string
+          reason: string | null
+          requested_at: string
+          requested_by: string | null
+        }
+        Insert: {
+          cancel_requested?: boolean
+          job_id: string
+          reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+        }
+        Update: {
+          cancel_requested?: boolean
+          job_id?: string
+          reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+        }
+        Relationships: []
+      }
       sets: {
         Row: {
           card_count: number | null
@@ -353,6 +377,10 @@ export type Database = {
       }
     }
     Functions: {
+      cancel_stuck_pricing_jobs: {
+        Args: { p_max_minutes?: number }
+        Returns: number
+      }
       catalog_v2_count_cards_by_game: {
         Args: { p_game: string }
         Returns: {
@@ -428,6 +456,10 @@ export type Database = {
         Args: { p_records: Json }
         Returns: undefined
       }
+      is_pricing_job_cancelled: {
+        Args: { p_job_id: string }
+        Returns: boolean
+      }
       normalize_condition: {
         Args: { api_condition: string }
         Returns: Database["public"]["Enums"]["card_condition_enum"]
@@ -435,6 +467,10 @@ export type Database = {
       normalize_printing: {
         Args: { api_printing: string }
         Returns: Database["public"]["Enums"]["card_printing_enum"]
+      }
+      request_pricing_job_cancel: {
+        Args: { p_job_id: string; p_reason?: string }
+        Returns: undefined
       }
       search_cards: {
         Args: {
@@ -468,6 +504,15 @@ export type Database = {
       start_pricing_job_run: {
         Args: { p_expected_batches: number; p_game: string }
         Returns: string
+      }
+      update_pricing_job_progress: {
+        Args: {
+          p_actual_batches: number
+          p_cards_processed: number
+          p_job_id: string
+          p_variants_updated: number
+        }
+        Returns: undefined
       }
     }
     Enums: {
