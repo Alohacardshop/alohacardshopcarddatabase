@@ -18,6 +18,7 @@ import { PricingMonitor } from "./pages/admin/PricingMonitor";
 import { SetsManager } from "./components/tcg/SetsManager";
 import { JobMonitor } from "./components/tcg/JobMonitor";
 import { Developers } from "./pages/admin/Developers";
+import { ScheduledJobs } from "./pages/admin/ScheduledJobs";
 import AdminSetup from "./pages/admin/AdminSetup";
 import Health from "./pages/debug/Health";
 
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="data" element={<DataBrowser />} />
               <Route path="api-test" element={<APITesting />} />
               <Route path="developers" element={<Developers />} />
+              <Route path="scheduled-jobs" element={<ScheduledJobs />} />
             </Route>
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
