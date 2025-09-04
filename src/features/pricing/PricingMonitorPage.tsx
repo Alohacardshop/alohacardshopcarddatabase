@@ -20,6 +20,7 @@ import { EssentialMetrics } from "@/components/dashboard/EssentialMetrics";
 import { AdvancedMetrics } from "@/components/dashboard/AdvancedMetrics";
 import { QuickActionBar } from "@/components/dashboard/QuickActionBar";
 import { SyncFloatingActionButton } from "@/components/dashboard/SyncFloatingActionButton";
+import { DeepSyncPanel } from "@/components/dashboard/DeepSyncPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -333,6 +334,9 @@ function PricingMonitorPageContent() {
           onSyncSealed={handleSyncSealed}
           onTestBatch={handleTestPricing}
         />
+
+        {/* Deep Sync Panel - New comprehensive sync controls */}
+        <DeepSyncPanel />
 
         {/* Welcome Dashboard - Streamlined */}
         <WelcomeDashboard />
