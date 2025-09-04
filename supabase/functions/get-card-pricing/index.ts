@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
     // Get card info to fetch JustTCG card ID
     const { data: cardData, error: cardError } = await supabase
       .from('cards')
-      .select('justtcg_card_id, name, image_url, sets!inner(name, games!inner(name, slug))')
+      .select('justtcg_card_id, name, image_url, set_id')
       .eq('id', cardId)
       .single()
 
@@ -146,6 +146,21 @@ Deno.serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Get set info separately
+    const { data: setData } = await supabase
+      .from('sets')
+      .select('name, game_id')
+      .eq('id', cardData.set_id)
+      .single()
+
+    // Get game info separately  
+    const { data: gameData } = await supabase
+      .from('games')
+      .select('name, slug')
+      .eq('id', setData?.game_id)
+      .single()
+
 
     // If refresh is requested, fetch fresh data from JustTCG API
     if (refresh) {
@@ -190,11 +205,13 @@ Deno.serve(async (req) => {
       .eq('card_id', cardId)
 
     if (condition) {
-      query = query.eq('condition', condition)
+      const normalizedCondition = JustTCGClient.normalizeCondition(condition)
+      query = query.eq('condition', normalizedCondition)
     }
 
     if (printing) {
-      query = query.eq('printing', printing)
+      const normalizedPrinting = JustTCGClient.normalizePrinting(printing)
+      query = query.eq('printing', normalizedPrinting)
     }
 
     const { data: variants, error } = await query
@@ -234,8 +251,8 @@ Deno.serve(async (req) => {
           card: {
             name: cardData.name,
             image_url: cardData.image_url,
-            set_name: cardData.sets.name,
-            game_name: cardData.sets.games.name
+            set_name: setData?.name || 'Unknown Set',
+            game_name: gameData?.name || 'Unknown Game'
           }
         }))
       }),
