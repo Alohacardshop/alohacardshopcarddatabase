@@ -149,18 +149,23 @@ export function AdminLayout() {
   return (
     <TooltipProvider>
       <SidebarProvider>
-        <div className="min-h-screen flex w-full bg-background">
-          <AdminSidebar />
-          
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="admin-shell w-full bg-background">
+          {/* Fixed Header */}
+          <div className="admin-header">
             <AdminTopNavigation />
-            
-            <main className="flex-1 overflow-y-auto bg-muted/30">
-              <div className="container max-w-screen-2xl mx-auto p-4 sm:p-6 min-h-full">
-                <Outlet />
-              </div>
-            </main>
           </div>
+
+          {/* Fixed Sidebar */}
+          <div className="admin-sidebar">
+            <AdminSidebar />
+          </div>
+          
+          {/* Scrollable Content */}
+          <main className="admin-content bg-muted/30">
+            <div className="content-container max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8 min-h-full">
+              <Outlet />
+            </div>
+          </main>
         </div>
       </SidebarProvider>
     </TooltipProvider>

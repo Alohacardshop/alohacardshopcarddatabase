@@ -3,17 +3,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
-import { RefreshCw, Clock, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { RefreshCw, Clock, CheckCircle, XCircle, AlertTriangle, Calendar, Info as InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface PricingJob {
   id: string;
-  game: string;
-  expected_batches: number;
-  actual_batches: number;
-  cards_processed: number;
-  variants_updated: number;
+  game_name: string;
+  total_batches: number;
+  batches_processed: number;
+  batches_failed: number;
   started_at: string;
   finished_at: string | null;
   status: string;
@@ -113,88 +113,107 @@ export function PricingJobMonitor() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Pricing Job Monitor</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center p-8">
-            <RefreshCw className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Loading pricing jobs...</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4 lg:space-y-6">
-      <Card className="w-full">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg sm:text-xl">Pricing Job Monitor</CardTitle>
-          <CardDescription className="text-sm">Monitor nightly variant pricing refresh jobs</CardDescription>
+    <div className="space-y-6">
+      {/* Sticky Action Bar */}
+      <div className="sticky top-2 z-40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 rounded-lg border p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-foreground truncate">Manual Pricing Refresh</h2>
+            <p className="text-sm text-muted-foreground">Trigger immediate variant pricing updates</p>
+          </div>
           
-          {/* Action Buttons - Responsive Layout */}
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div className="flex flex-wrap gap-2">
             <Button 
-              onClick={() => triggerPricingRefresh('pokemon')} 
+              onClick={() => triggerPricingRefresh('pokemon')}
               size="sm"
-              className="flex-1 sm:flex-none min-w-[120px]"
+              className="flex-1 sm:flex-none"
             >
-              Refresh Pokemon
+              <RefreshCw className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Pokémon EN</span>
+              <span className="sm:hidden">EN</span>
             </Button>
             <Button 
-              onClick={() => triggerPricingRefresh('pokemon-japan')} 
+              onClick={() => triggerPricingRefresh('pokemon-japan')}
               size="sm"
-              className="flex-1 sm:flex-none min-w-[140px]"
+              className="flex-1 sm:flex-none"
             >
-              Refresh Pokemon JP
+              <RefreshCw className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Pokémon JP</span>
+              <span className="sm:hidden">JP</span>
             </Button>
             <Button 
-              onClick={() => triggerPricingRefresh('mtg')} 
+              onClick={() => triggerPricingRefresh('mtg')}
               size="sm"
-              className="flex-1 sm:flex-none min-w-[100px]"
+              className="flex-1 sm:flex-none"
             >
-              Refresh MTG
+              <RefreshCw className="h-4 w-4 mr-1" />
+              MTG
             </Button>
             <Button 
-              onClick={fetchJobs} 
+              onClick={fetchJobs}
               variant="outline" 
               size="sm"
-              className="flex-1 sm:flex-none min-w-[100px]"
+              className="shrink-0"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh List
+              <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Job List */}
+      <Card className="min-h-0">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              <CardTitle>Recent Pricing Jobs</CardTitle>
+            </div>
+            <Badge variant="outline" className="text-xs">
+              {jobs.length} jobs
+            </Badge>
+          </div>
+          <CardDescription>
+            Status of recent and ongoing pricing refresh jobs
+          </CardDescription>
         </CardHeader>
-        
-        <CardContent className="px-0 sm:px-6">
+        <CardContent className="p-0">
           {jobs.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8 px-6">
-              <p className="text-sm sm:text-base">No pricing jobs found. Click a refresh button to start one.</p>
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Clock className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="font-medium text-foreground mb-2">No pricing jobs found</h3>
+              <p className="text-sm text-muted-foreground mb-4">Start a refresh to see job progress here</p>
             </div>
           ) : (
-            /* Responsive Table Container */
-            <div className="w-full overflow-x-auto">
-              <div className="min-w-[800px]">
+            <div className="overflow-hidden">
+              <div className="max-h-[60vh] overflow-y-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-background border-b z-10">
                     <TableRow>
                       <TableHead className="w-[120px]">Game</TableHead>
-                      <TableHead className="w-[140px]">Status</TableHead>
-                      <TableHead className="w-[160px]">Progress</TableHead>
-                      <TableHead className="w-[80px] text-right">Cards</TableHead>
-                      <TableHead className="w-[80px] text-right">Variants</TableHead>
-                      <TableHead className="w-[80px]">Duration</TableHead>
-                      <TableHead className="w-[140px]">Started</TableHead>
+                      <TableHead className="w-[120px]">Status</TableHead>
+                      <TableHead className="w-[140px]">Progress</TableHead>
+                      <TableHead className="w-[80px] text-right">Batches</TableHead>
+                      <TableHead className="w-[80px] text-right">Processed</TableHead>
+                      <TableHead className="w-[80px] text-right">Failed</TableHead>
+                      <TableHead className="w-[100px]">Duration</TableHead>
+                      <TableHead className="min-w-[140px]">Started</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {jobs.map((job) => (
-                      <TableRow key={job.id}>
-                        <TableCell className="font-medium capitalize">
-                          {job.game.replace('-', ' ')}
+                      <TableRow key={job.id} className="hover:bg-muted/50">
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs font-mono">
+                            {job.game_name}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -203,40 +222,33 @@ export function PricingJobMonitor() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {job.expected_batches > 0 ? (
-                            <div className="flex items-center gap-2 min-w-[140px]">
-                              <div className="flex-1 bg-gray-200 rounded-full h-2 min-w-[60px]">
-                                <div
-                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                  style={{
-                                    width: `${Math.min((job.actual_batches / job.expected_batches) * 100, 100)}%`
-                                  }}
-                                />
-                              </div>
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                {job.actual_batches}/{job.expected_batches}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>Progress</span>
+                              <span className="font-mono">
+                                {job.batches_processed}/{job.total_batches || 0}
                               </span>
                             </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
+                            <Progress 
+                              value={job.total_batches ? (job.batches_processed / job.total_batches) * 100 : 0} 
+                              className="h-2"
+                            />
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {job.cards_processed.toLocaleString()}
+                          {job.total_batches || 0}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm">
-                          {job.variants_updated.toLocaleString()}
+                          {job.batches_processed || 0}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell className="text-right font-mono text-sm">
+                          {job.batches_failed || 0}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
                           {formatDuration(job.started_at, job.finished_at)}
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {new Date(job.started_at).toLocaleString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                        <TableCell className="font-mono text-xs">
+                          {new Date(job.started_at).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -248,28 +260,81 @@ export function PricingJobMonitor() {
         </CardContent>
       </Card>
 
-      {/* Scheduled Jobs Card */}
-      <Card className="w-full">
+      {/* Scheduled Jobs Information */}
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg sm:text-xl">Scheduled Jobs</CardTitle>
-          <CardDescription className="text-sm">Nightly cron jobs for automatic pricing updates</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Scheduled Jobs
+          </CardTitle>
+          <CardDescription>
+            Automatic pricing update schedules for different games
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
-              <h4 className="font-semibold text-base">Pokemon EN</h4>
-              <p className="text-sm text-muted-foreground mt-1">Daily at 00:00 UTC</p>
-              <p className="text-xs text-muted-foreground mt-2 font-mono">~115 batches</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-foreground">Pokémon EN</h4>
+                <Badge variant="secondary" className="text-xs">Daily</Badge>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Runs every night at <span className="font-mono">00:00 UTC</span>
+                </p>
+                <div className="text-xs text-muted-foreground">
+                  Avg: ~500-1000 batches per run
+                </div>
+                <div className="text-xs font-mono text-primary">
+                  Next: Tonight at 00:00
+                </div>
+              </div>
             </div>
-            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
-              <h4 className="font-semibold text-base">Pokemon Japan</h4>
-              <p className="text-sm text-muted-foreground mt-1">Daily at 00:02 UTC</p>
-              <p className="text-xs text-muted-foreground mt-2 font-mono">~74 batches</p>
+            
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-foreground">Pokémon Japan</h4>
+                <Badge variant="secondary" className="text-xs">Daily</Badge>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Runs every night at <span className="font-mono">01:00 UTC</span>
+                </p>
+                <div className="text-xs text-muted-foreground">
+                  Avg: ~300-600 batches per run
+                </div>
+                <div className="text-xs font-mono text-primary">
+                  Next: Tonight at 01:00
+                </div>
+              </div>
             </div>
-            <div className="p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors sm:col-span-2 lg:col-span-1">
-              <h4 className="font-semibold text-base">Magic: The Gathering</h4>
-              <p className="text-sm text-muted-foreground mt-1">Daily at 00:04 UTC</p>
-              <p className="text-xs text-muted-foreground mt-2 font-mono">~250 batches</p>
+            
+            <div className="p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors sm:col-span-2 xl:col-span-1">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-foreground">Magic: The Gathering</h4>
+                <Badge variant="secondary" className="text-xs">Daily</Badge>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Runs every night at <span className="font-mono">02:00 UTC</span>
+                </p>
+                <div className="text-xs text-muted-foreground">
+                  Avg: ~1000-2000 batches per run
+                </div>
+                <div className="text-xs font-mono text-primary">
+                  Next: Tonight at 02:00
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t mt-6">
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <InfoIcon className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                Scheduled jobs run automatically via edge functions. Manual triggers above will start additional refresh cycles 
+                that run independently of the nightly schedule.
+              </p>
             </div>
           </div>
         </CardContent>

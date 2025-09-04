@@ -62,32 +62,36 @@ export const AdminTopNavigation = () => {
   const breadcrumbItems = getBreadcrumbItems();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 max-w-screen-2xl items-center px-4">
+    <header className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
+      <div className="flex h-full max-w-screen-2xl items-center px-4 sm:px-6 lg:px-8">
         {/* Left section: Sidebar trigger + Breadcrumbs */}
-        <div className="flex items-center gap-4 flex-1">
-          <SidebarTrigger className="hover:bg-accent hover:text-accent-foreground" />
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+          <SidebarTrigger className="hover:bg-accent hover:text-accent-foreground shrink-0" />
           
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation="vertical" className="h-6 hidden sm:block" />
           
-          <Breadcrumb>
+          <Breadcrumb className="min-w-0">
             <BreadcrumbList>
               {breadcrumbItems.map((item, index) => {
                 const Icon = item.icon;
+                const isLast = index === breadcrumbItems.length - 1;
+                
                 return (
-                  <div key={item.url} className="flex items-center">
-                    {index > 0 && <BreadcrumbSeparator />}
-                    <BreadcrumbItem>
+                  <div key={item.url} className="flex items-center min-w-0">
+                    {index > 0 && <BreadcrumbSeparator className="shrink-0" />}
+                    <BreadcrumbItem className="min-w-0">
                       <BreadcrumbLink 
                         href={item.url}
-                        className={`flex items-center gap-2 ${
-                          index === breadcrumbItems.length - 1 
+                        className={`flex items-center gap-1 sm:gap-2 min-w-0 ${
+                          isLast
                             ? 'text-foreground font-medium' 
                             : 'text-muted-foreground hover:text-foreground'
                         }`}
                       >
-                        <Icon className="h-3 w-3" />
-                        <span className="hidden sm:inline">{item.title}</span>
+                        <Icon className="h-3 w-3 shrink-0" />
+                        <span className="truncate hidden xs:inline text-sm">
+                          {item.title}
+                        </span>
                       </BreadcrumbLink>
                     </BreadcrumbItem>
                   </div>
@@ -98,16 +102,18 @@ export const AdminTopNavigation = () => {
         </div>
 
         {/* Right section: Status + Admin badge + User menu */}
-        <div className="flex items-center gap-3">
-          {/* System Status */}
-          <SystemStatusIndicator />
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* System Status - hidden on mobile */}
+          <div className="hidden sm:block">
+            <SystemStatusIndicator />
+          </div>
           
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation="vertical" className="h-6 hidden sm:block" />
           
           {/* Admin Mode Badge */}
           <Badge variant="default" className="text-xs font-medium">
-            <Shield className="h-3 w-3 mr-1" />
-            Admin
+            <Shield className="h-3 w-3 sm:mr-1" />
+            <span className="hidden sm:inline">Admin</span>
           </Badge>
           
           {/* User Menu */}

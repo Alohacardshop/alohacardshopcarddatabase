@@ -39,20 +39,18 @@ All colors MUST be HSL.
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Layout variables */
+    --header-height: 3.5rem;
+    --sidebar-width: 15rem;
+    --sidebar-width-collapsed: 3.75rem;
   }
 
   .dark {
@@ -95,11 +93,60 @@ All colors MUST be HSL.
 }
 
 @layer base {
+  html, body, #root {
+    height: 100%;
+  }
+
   * {
     @apply border-border;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Global layout utilities */
+  .admin-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+    height: 100vh;
+  }
+
+  .admin-shell.sidebar-collapsed {
+    grid-template-columns: var(--sidebar-width-collapsed) 1fr;
+  }
+
+  .admin-header {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .admin-sidebar {
+    position: sticky;
+    top: var(--header-height);
+    height: calc(100vh - var(--header-height));
+    overflow-y: auto;
+  }
+
+  .admin-content {
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  /* Prevent content overflow */
+  .content-container {
+    min-width: 0;
+  }
+
+  /* Responsive breakpoints */
+  @media (max-width: 768px) {
+    .admin-shell {
+      grid-template-columns: 1fr;
+      grid-template-rows: var(--header-height) 1fr;
+    }
   }
 }
