@@ -122,7 +122,7 @@ function AdminSidebar() {
                               title={item.title}
                             >
                               <item.icon className="h-4 w-4 shrink-0" />
-                              {state === "expanded" && <span>{item.title}</span>}
+                              <span>{item.title}</span>
                             </NavLink>
                           </SidebarMenuButton>
                         </TooltipTrigger>
