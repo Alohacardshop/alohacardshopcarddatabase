@@ -100,6 +100,36 @@ export type Database = {
           },
         ]
       }
+      game_configs: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          is_active: boolean | null
+          justtcg_api_slug: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          is_active?: boolean | null
+          justtcg_api_slug: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean | null
+          justtcg_api_slug?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       games: {
         Row: {
           created_at: string
