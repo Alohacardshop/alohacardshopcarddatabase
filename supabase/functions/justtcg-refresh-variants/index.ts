@@ -66,13 +66,15 @@ async function fetchJustTcgVariants(
   const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
   const url = `${JTCG_BASE}/variants?game=${game}&limit=${limit}&offset=${offset}`;
   
+  console.log(`Fetching variants: ${url}`);
+  console.log(`Headers: X-API-Key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
+  
   while (attempt < maxRetries) {
     try {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'X-API-Key': apiKey,
-          'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         }
@@ -99,9 +101,11 @@ async function fetchJustTcgVariants(
       }
 
       const raw = await response.json();
+      console.log(`API Response status: ${response.status}, keys:`, Object.keys(raw || {}));
       const variants = extractVariants(raw);
+      console.log(`Extracted ${variants.length} variants from response`);
       if (variants.length === 0) {
-        console.warn('No variants parsed from API response. Top-level keys:', Object.keys(raw || {}));
+        console.warn('No variants parsed from API response. Raw response sample:', JSON.stringify(raw).slice(0, 500));
       }
       return variants;
     } catch (error) {
@@ -231,6 +235,8 @@ serve(async (req) => {
     }
 
     console.log(`Starting variant pricing refresh for game: ${game}`);
+    console.log(`API Key configured: ${!!justTCGApiKey}`);
+    console.log(`JTCG_BASE: ${Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1'}`);
 
     // Start job run - we'll estimate batches based on pagination
     let estimatedBatches = 50; // Initial estimate, will be adjusted
