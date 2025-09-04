@@ -675,6 +675,15 @@ export type Database = {
         Args: { p_error?: string; p_job_id: string; p_status?: string }
         Returns: undefined
       }
+      get_cron_jobs_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          active: boolean
+          job_id: number
+          job_name: string
+          schedule: string
+        }[]
+      }
       get_pricing_jobs_recent: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -798,6 +807,10 @@ export type Database = {
       start_pricing_job_run: {
         Args: { p_expected_batches: number; p_game: string }
         Returns: string
+      }
+      trigger_test_pricing_batch: {
+        Args: { p_game?: string; p_limit?: number }
+        Returns: Json
       }
       update_pricing_job_progress: {
         Args: {
