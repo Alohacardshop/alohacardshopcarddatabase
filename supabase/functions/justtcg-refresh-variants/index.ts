@@ -12,19 +12,15 @@ const CEILING = 470;
 interface JustTCGVariant {
   id: string;
   cardId: string;
-  language?: string;
-  printing?: string;
+  tcgplayerId?: string;
+  cardName?: string;
+  setName?: string;
+  gameSlug?: string;
   condition?: string;
-  sku?: string;
-  prices?: {
-    currency?: string;
-    latest?: number;
-    market?: number;
-    low?: number;
-    mid?: number;
-    high?: number;
-    updatedAt?: string;
-  };
+  printing?: string;
+  price?: number;
+  priceChange24h?: number;
+  lastUpdated?: number;
 }
 
 interface JustTCGApiResponse {
@@ -41,19 +37,6 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Accept multiple response shapes from JustTCG
-function extractVariants(json: any): JustTCGVariant[] {
-  if (!json) return [];
-  // Shape 1: { data: [...] }
-  if (Array.isArray(json.data)) return json.data as JustTCGVariant[];
-  // Shape 2: { variants: [...] }
-  if (Array.isArray(json.variants)) return json.variants as JustTCGVariant[];
-  // Shape 3: top-level array
-  if (Array.isArray(json)) return json as JustTCGVariant[];
-  // Unknown shape
-  return [];
-}
-
 async function fetchJustTcgVariants(
   game: string,
   apiKey: string,
@@ -64,9 +47,12 @@ async function fetchJustTcgVariants(
   let attempt = 0;
   
   const JTCG_BASE = Deno.env.get('JTCG_BASE') || 'https://api.justtcg.com/v1';
-  const url = `${JTCG_BASE}/variants?game=${game}&limit=${limit}&offset=${offset}`;
   
-  console.log(`Fetching variants: ${url}`);
+  // JustTCG doesn't have a bulk variants endpoint by game
+  // We need to fetch cards first, then extract variants
+  const url = `${JTCG_BASE}/cards?game=${game}&limit=${limit}&offset=${offset}&include_variants=true`;
+  
+  console.log(`Fetching cards with variants: ${url}`);
   console.log(`Headers: X-API-Key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
   
   while (attempt < maxRetries) {
@@ -102,12 +88,31 @@ async function fetchJustTcgVariants(
 
       const raw = await response.json();
       console.log(`API Response status: ${response.status}, keys:`, Object.keys(raw || {}));
-      const variants = extractVariants(raw);
-      console.log(`Extracted ${variants.length} variants from response`);
-      if (variants.length === 0) {
-        console.warn('No variants parsed from API response. Raw response sample:', JSON.stringify(raw).slice(0, 500));
+      
+      // Extract cards from response
+      const cards = raw?.data || [];
+      console.log(`Received ${cards.length} cards from API`);
+      
+      // Flatten all variants from all cards
+      const allVariants: JustTCGVariant[] = [];
+      for (const card of cards) {
+        if (card.variants && Array.isArray(card.variants)) {
+          for (const variant of card.variants) {
+            // Add card info to variant for processing
+            allVariants.push({
+              ...variant,
+              cardId: card.id,
+              tcgplayerId: card.tcgplayerId,
+              cardName: card.name,
+              setName: card.set,
+              gameSlug: game
+            });
+          }
+        }
       }
-      return variants;
+      
+      console.log(`Extracted ${allVariants.length} variants from ${cards.length} cards`);
+      return allVariants;
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxRetries - 1) {
@@ -130,18 +135,25 @@ function mapVariantToRow(game: string, variant: JustTCGVariant) {
     game,
     card_provider_id: variant.cardId,
     variant_provider_id: variant.id,
-    language: variant.language || null,
+    language: null, // JustTCG doesn't seem to provide language in this format
     printing: variant.printing || null,
     condition: variant.condition || null,
-    sku: variant.sku || null,
-    currency: variant.prices?.currency || 'USD',
-    price: variant.prices?.latest?.toString() || null,
-    market_price: variant.prices?.market?.toString() || null,
-    low_price: variant.prices?.low?.toString() || null,
-    mid_price: variant.prices?.mid?.toString() || null,
-    high_price: variant.prices?.high?.toString() || null,
-    data: { raw: variant },
-    updated_from_source_at: variant.prices?.updatedAt || new Date().toISOString()
+    sku: null, // Not provided in this format
+    currency: 'USD', // JustTCG prices are in USD
+    price: variant.price?.toString() || null,
+    market_price: null, // Not provided in this response format
+    low_price: null,
+    mid_price: null,
+    high_price: null,
+    data: { 
+      raw: variant,
+      tcgplayerId: variant.tcgplayerId,
+      cardName: variant.cardName,
+      setName: variant.setName
+    },
+    updated_from_source_at: variant.lastUpdated 
+      ? new Date(variant.lastUpdated * 1000).toISOString() 
+      : new Date().toISOString()
   };
 }
 
