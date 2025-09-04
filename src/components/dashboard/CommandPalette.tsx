@@ -31,6 +31,17 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
 
   // Sample commands - in real app, these would come from your app state
   const commands: Command[] = [
+    // Quick Actions (Priority)
+    {
+      id: "action-sync-all",
+      title: "Sync All Games",
+      description: "Start comprehensive sync across all games and products",
+      icon: <Zap className="w-4 h-4" />,
+      category: "Quick Actions",
+      action: () => onAction?.("sync-all"),
+      keywords: ["sync", "all", "games", "everything", "pricing", "comprehensive"]
+    },
+
     // Navigation
     {
       id: "nav-overview",
@@ -116,15 +127,6 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
       keywords: ["sync", "sealed", "products", "booster", "boxes"]
     },
     {
-      id: "action-sync-all",
-      title: "Sync All Games",
-      description: "Start pricing jobs for all supported games",
-      icon: <Zap className="w-4 h-4" />,
-      category: "Actions",
-      action: () => onAction?.("sync-all"),
-      keywords: ["sync", "all", "games", "everything", "pricing"]
-    },
-    {
       id: "action-health-check",
       title: "Run Health Check",
       description: "Check system health and status",
@@ -193,6 +195,22 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
       onClose();
     }
   };
+
+  // Global keyboard shortcut listener
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key === 'S' && !open) {
+        e.preventDefault();
+        const syncAllCommand = commands.find(cmd => cmd.id === 'action-sync-all');
+        if (syncAllCommand) {
+          syncAllCommand.action();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [open, onAction]);
 
   useEffect(() => {
     if (open) {
@@ -298,7 +316,10 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
 
         <div className="border-t px-4 py-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Press Cmd+K to open command palette</span>
+            <div className="flex items-center gap-4">
+              <span>Press Cmd+K to open</span>
+              <span>Shift+S for sync all</span>
+            </div>
             <div className="flex items-center gap-4">
               <span>{filteredCommands.length} commands</span>
             </div>

@@ -16,6 +16,7 @@ import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { PerformanceMetrics } from "@/components/dashboard/PerformanceMetrics";
 import { EnhancedEmptyState } from "@/components/dashboard/EnhancedEmptyState";
 import { QuickActions } from "@/components/dashboard/QuickActions";
+import { SyncEverythingSection } from "@/components/dashboard/SyncEverythingSection";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -186,38 +187,34 @@ function PricingMonitorPageContent() {
   };
 
   const handleSyncAll = async () => {
-    const games = [
-      { slug: 'mtg', name: 'Magic: The Gathering' },
-      { slug: 'pokemon', name: 'Pokémon EN' },
-      { slug: 'pokemon-japan', name: 'Pokémon JP' },
-      { slug: 'yugioh', name: 'Yu-Gi-Oh' }
-    ];
+    try {
+      addToast({
+        type: 'info',
+        title: '🚀 Starting Sync All Operation',
+        message: 'Initializing comprehensive sync across all games...'
+      });
 
-    addToast({
-      type: 'info',
-      title: '🚀 Starting Mass Sync',
-      message: 'Queuing pricing jobs for all supported games...'
-    });
+      const { data, error } = await supabase.functions.invoke('sync-all-games', {
+        body: {}
+      });
 
-    let successCount = 0;
-    for (const game of games) {
-      try {
-        await supabase.rpc('enqueue_pricing_job', {
-          p_game: game.slug,
-          p_priority: 0
-        });
-        successCount++;
-      } catch (error) {
-        console.error(`Failed to sync ${game.name}:`, error);
-      }
+      if (error) throw error;
+
+      addToast({
+        type: 'success',
+        title: '✅ Sync All Operation Started',
+        message: 'Comprehensive sync has been initiated. This will take 15-20 minutes.',
+        duration: 10000
+      });
+    } catch (error) {
+      console.error('Sync All error:', error);
+      addToast({
+        type: 'error',
+        title: '❌ Sync All Failed',
+        message: `Failed to start comprehensive sync: ${error.message}`,
+        duration: 8000
+      });
     }
-
-    addToast({
-      type: successCount === games.length ? 'success' : 'warning',
-      title: successCount === games.length ? '✅ All Jobs Queued' : '⚠️ Partial Success',
-      message: `Successfully queued ${successCount}/${games.length} pricing jobs.`,
-      duration: 8000
-    });
   };
 
   const handleSyncSealed = async () => {
@@ -324,6 +321,8 @@ function PricingMonitorPageContent() {
           {/* Tab Contents */}
           <div className="relative min-h-[600px]">
             <TabsContent value="overview" className="m-0 space-y-6">
+              <SyncEverythingSection onStartSync={handleSyncAll} />
+              
               <QuickActions
                 onTestBatch={handleTestPricing}
                 onSyncAll={handleSyncAll}
