@@ -50,6 +50,13 @@ function PricingMonitorPageContent() {
     setLastUpdated(new Date());
     setNextSync(new Date(Date.now() + 30 * 60 * 1000)); // 30 minutes from now
     
+    // Check for tab parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && ['overview', 'analytics', 'jobs', 'sealed', 'system', 'sync-manager'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+    
     // Simulate API usage monitoring
     const checkApiUsage = () => {
       const currentUsage = Math.random() * 100;

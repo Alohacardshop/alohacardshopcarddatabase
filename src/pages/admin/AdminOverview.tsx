@@ -15,7 +15,8 @@ import {
   Zap, 
   Clock, 
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  GamepadIcon
 } from 'lucide-react';
 
 interface SystemHealth {
@@ -323,6 +324,14 @@ export function AdminOverview() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
+            <Button 
+              onClick={() => window.location.href = '/admin/pricing?tab=sync-manager'} 
+              variant="default"
+              className="bg-gradient-to-r from-primary to-primary/80"
+            >
+              <GamepadIcon className="w-4 h-4 mr-2" />
+              Game Sync Manager
+            </Button>
             <Button onClick={() => window.location.href = '/admin/pricing'} variant="outline">
               Pricing Monitor
             </Button>
