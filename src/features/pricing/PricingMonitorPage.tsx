@@ -22,6 +22,7 @@ import { QuickActionBar } from "@/components/dashboard/QuickActionBar";
 import { SyncFloatingActionButton } from "@/components/dashboard/SyncFloatingActionButton";
 import { DeepSyncPanel } from "@/components/dashboard/DeepSyncPanel";
 import { GameSyncManager } from "@/components/admin/GameSyncManager";
+import { EmergencyControls } from "@/components/admin/EmergencyControls";
 import { supabase } from "@/integrations/supabase/client";
 import { useSyncActions } from "@/hooks/useSyncActions";
 
@@ -334,7 +335,8 @@ function PricingMonitorPageContent() {
               <SystemHealthTab />
             </TabsContent>
 
-            <TabsContent value="sync-manager" className="m-0">
+            <TabsContent value="sync-manager" className="m-0 space-y-6">
+              <EmergencyControls />
               <GameSyncManager />
             </TabsContent>
           </div>
