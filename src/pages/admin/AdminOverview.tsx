@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { QuickActionBar } from '@/components/dashboard/QuickActionBar';
+import { useSyncActions } from '@/hooks/useSyncActions';
 import { 
   CheckCircle, 
   XCircle, 
@@ -36,6 +38,16 @@ interface SystemStats {
 export function AdminOverview() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const {
+    syncState,
+    handleSyncAll,
+    handleSyncMTG,
+    handleSyncPokemonEN,
+    handleSyncPokemonJP,
+    handleSyncYugioh,
+    handleSyncSealed,
+    handleTestBatch
+  } = useSyncActions();
   const [health, setHealth] = useState<SystemHealth>({
     database: 'checking',
     apiKey: 'checking',
@@ -291,20 +303,26 @@ export function AdminOverview() {
         </CardContent>
       </Card>
 
-      {/* Quick Actions */}
+      {/* Quick Action Bar - Now with working sync buttons */}
+      <QuickActionBar
+        onSyncAll={handleSyncAll}
+        onSyncMTG={handleSyncMTG}
+        onSyncPokemonEN={handleSyncPokemonEN}
+        onSyncPokemonJP={handleSyncPokemonJP}
+        onSyncYugioh={handleSyncYugioh}
+        onSyncSealed={handleSyncSealed}
+        onTestBatch={handleTestBatch}
+        syncState={syncState}
+      />
+
+      {/* Navigation Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common administrative tasks</CardDescription>
+          <CardTitle>Navigation & Tools</CardTitle>
+          <CardDescription>Access other admin sections and tools</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => window.location.href = '/admin/sync'} variant="default">
-              Start Sync
-            </Button>
-            <Button onClick={() => window.location.href = '/admin/jobs'} variant="outline">
-              View Jobs
-            </Button>
             <Button onClick={() => window.location.href = '/admin/pricing'} variant="outline">
               Pricing Monitor
             </Button>

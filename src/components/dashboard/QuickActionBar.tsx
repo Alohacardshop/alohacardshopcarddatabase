@@ -1,7 +1,12 @@
-import { Zap, Database, Settings, Play } from 'lucide-react';
+import { Zap, Database, Settings, Play, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+
+interface SyncState {
+  isLoading: boolean;
+  loadingAction: string | null;
+}
 
 interface QuickActionBarProps {
   onSyncAll?: () => void;
@@ -11,6 +16,7 @@ interface QuickActionBarProps {
   onSyncYugioh?: () => void;
   onSyncSealed?: () => void;
   onTestBatch?: () => void;
+  syncState?: SyncState;
 }
 
 export function QuickActionBar({
@@ -20,8 +26,25 @@ export function QuickActionBar({
   onSyncPokemonJP,
   onSyncYugioh,
   onSyncSealed,
-  onTestBatch
+  onTestBatch,
+  syncState
 }: QuickActionBarProps) {
+  const isLoading = syncState?.isLoading || false;
+  const loadingAction = syncState?.loadingAction;
+
+  const getButtonContent = (action: string, icon: React.ReactNode, text: string) => {
+    const isThisButtonLoading = isLoading && loadingAction === action;
+    return (
+      <>
+        {isThisButtonLoading ? (
+          <Loader2 className="w-3 h-3 mr-1 flex-shrink-0 animate-spin" />
+        ) : (
+          icon
+        )}
+        <span className="truncate">{text}</span>
+      </>
+    );
+  };
   return (
     <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-primary/3 to-primary/5">
       <CardHeader className="pb-4">
@@ -36,9 +59,14 @@ export function QuickActionBar({
           <Button
             size="lg"
             onClick={onSyncAll}
-            className="h-12 px-8 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
+            disabled={isLoading}
+            className="h-12 px-8 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50"
           >
-            <Zap className="w-5 h-5 mr-2" />
+            {loadingAction === 'sync-all' ? (
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            ) : (
+              <Zap className="w-5 h-5 mr-2" />
+            )}
             🔄 Sync All Products
           </Button>
           <p className="text-xs text-muted-foreground mt-2">
@@ -56,50 +84,50 @@ export function QuickActionBar({
               variant="outline"
               size="sm"
               onClick={onSyncMTG}
+              disabled={isLoading}
               className="flex-1 min-w-0"
             >
-              <Database className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">MTG</span>
+              {getButtonContent('sync-mtg', <Database className="w-3 h-3 mr-1 flex-shrink-0" />, 'MTG')}
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={onSyncPokemonEN}
+              disabled={isLoading}
               className="flex-1 min-w-0"
             >
-              <Database className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Pokémon EN</span>
+              {getButtonContent('sync-pokemon', <Database className="w-3 h-3 mr-1 flex-shrink-0" />, 'Pokémon EN')}
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={onSyncPokemonJP}
+              disabled={isLoading}
               className="flex-1 min-w-0"
             >
-              <Database className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Pokémon JP</span>
+              {getButtonContent('sync-pokemon-japan', <Database className="w-3 h-3 mr-1 flex-shrink-0" />, 'Pokémon JP')}
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={onSyncYugioh}
+              disabled={isLoading}
               className="flex-1 min-w-0"
             >
-              <Database className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Yu-Gi-Oh</span>
+              {getButtonContent('sync-yugioh', <Database className="w-3 h-3 mr-1 flex-shrink-0" />, 'Yu-Gi-Oh')}
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={onSyncSealed}
+              disabled={isLoading}
               className="flex-1 min-w-0"
             >
-              <Database className="w-3 h-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Sealed</span>
+              {getButtonContent('sync-sealed', <Database className="w-3 h-3 mr-1 flex-shrink-0" />, 'Sealed')}
             </Button>
           </div>
         </div>
@@ -116,9 +144,14 @@ export function QuickActionBar({
             variant="ghost"
             size="sm"
             onClick={onTestBatch}
+            disabled={isLoading}
             className="text-muted-foreground hover:text-foreground"
           >
-            <Play className="w-3 h-3 mr-1" />
+            {loadingAction === 'test-batch' ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <Play className="w-3 h-3 mr-1" />
+            )}
             Test 10 Cards
           </Button>
         </div>

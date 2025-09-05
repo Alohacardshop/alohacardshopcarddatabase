@@ -23,6 +23,7 @@ import { SyncFloatingActionButton } from "@/components/dashboard/SyncFloatingAct
 import { DeepSyncPanel } from "@/components/dashboard/DeepSyncPanel";
 import { GameSyncManager } from "@/components/admin/GameSyncManager";
 import { supabase } from "@/integrations/supabase/client";
+import { useSyncActions } from "@/hooks/useSyncActions";
 
 function PricingMonitorPageContent() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -33,6 +34,16 @@ function PricingMonitorPageContent() {
   const [apiUsage, setApiUsage] = useState(0);
   
   const { addToast } = useToast();
+  const {
+    syncState,
+    handleSyncAll,
+    handleSyncMTG,
+    handleSyncPokemonEN,
+    handleSyncPokemonJP,
+    handleSyncYugioh,
+    handleSyncSealed,
+    handleTestBatch
+  } = useSyncActions();
 
   // Initialize with current time and estimated next sync
   useEffect(() => {
@@ -162,116 +173,19 @@ function PricingMonitorPageContent() {
     }
   };
 
-  const handleSyncGame = async (gameSlug: string, displayName: string) => {
-    try {
-      addToast({
-        type: 'info',
-        title: `🔄 Syncing ${displayName}`,
-        message: `Starting pricing sync for ${displayName}...`
-      });
-
-      // Use the enqueue_pricing_job RPC function
-      const { data, error } = await supabase.rpc('enqueue_pricing_job', {
-        p_game: gameSlug,
-        p_priority: 0
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      addToast({
-        type: 'success',
-        title: `✅ ${displayName} Sync Queued`,
-        message: `Pricing job for ${displayName} has been queued successfully.`,
-        duration: 6000
-      });
-    } catch (error) {
-      console.error(`Sync error for ${displayName}:`, error);
-      addToast({
-        type: 'error',
-        title: `❌ ${displayName} Sync Failed`,
-        message: `Failed to queue sync job: ${error.message}`,
-        duration: 8000
-      });
-    }
-  };
-
-  const handleSyncAll = async () => {
-    try {
-      addToast({
-        type: 'info',
-        title: '🚀 Starting Sync All Operation',
-        message: 'Initializing comprehensive sync across all games...'
-      });
-
-      const { data, error } = await supabase.functions.invoke('sync-all-games', {
-        body: {}
-      });
-
-      if (error) throw error;
-
-      addToast({
-        type: 'success',
-        title: '✅ Sync All Operation Started',
-        message: 'Comprehensive sync has been initiated. This will take 15-20 minutes.',
-        duration: 10000
-      });
-    } catch (error) {
-      console.error('Sync All error:', error);
-      addToast({
-        type: 'error',
-        title: '❌ Sync All Failed',
-        message: `Failed to start comprehensive sync: ${error.message}`,
-        duration: 8000
-      });
-    }
-  };
-
-  const handleSyncSealed = async () => {
-    try {
-      addToast({
-        type: 'info',
-        title: '📦 Syncing Sealed Products',
-        message: 'Starting sealed product sync...'
-      });
-
-      const { data, error } = await supabase.functions.invoke('justtcg-sealed-sync', {
-        body: {}
-      });
-
-      if (error) throw error;
-
-      addToast({
-        type: 'success',
-        title: '✅ Sealed Products Sync Started',
-        message: 'Sealed product sync has been initiated successfully.',
-        duration: 6000
-      });
-    } catch (error) {
-      console.error('Sealed sync error:', error);
-      addToast({
-        type: 'error',
-        title: '❌ Sealed Products Sync Failed',
-        message: `Failed to start sealed product sync: ${error.message}`,
-        duration: 8000
-      });
-    }
-  };
-
   const handleCommandAction = (action: string) => {
     switch (action) {
       case 'sync-pokemon-en':
-        handleSyncGame('pokemon', 'Pokémon EN');
+        handleSyncPokemonEN();
         break;
       case 'sync-pokemon-jp':
-        handleSyncGame('pokemon-japan', 'Pokémon JP');
+        handleSyncPokemonJP();
         break;
       case 'sync-mtg':
-        handleSyncGame('mtg', 'Magic: The Gathering');
+        handleSyncMTG();
         break;
       case 'sync-yugioh':
-        handleSyncGame('yugioh', 'Yu-Gi-Oh');
+        handleSyncYugioh();
         break;
       case 'sync-sealed':
         handleSyncSealed();
@@ -283,8 +197,8 @@ function PricingMonitorPageContent() {
         handleHealthCheck();
         break;
         case 'test-pricing':
-        handleTestPricing();
-        break;
+          handleTestBatch();
+          break;
       case 'sync-manager':
         setActiveTab('sync-manager');
         break;
@@ -328,15 +242,16 @@ function PricingMonitorPageContent() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Quick Action Bar - Prominent at top */}
+        {/* Quick Action Bar - Now using the reusable hook */}
         <QuickActionBar
           onSyncAll={handleSyncAll}
-          onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
-          onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
-          onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
-          onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+          onSyncMTG={handleSyncMTG}
+          onSyncPokemonEN={handleSyncPokemonEN}
+          onSyncPokemonJP={handleSyncPokemonJP}
+          onSyncYugioh={handleSyncYugioh}
           onSyncSealed={handleSyncSealed}
-          onTestBatch={handleTestPricing}
+          onTestBatch={handleTestBatch}
+          syncState={syncState}
         />
 
         {/* Deep Sync Panel - New comprehensive sync controls */}
@@ -365,12 +280,12 @@ function PricingMonitorPageContent() {
               <SyncEverythingSection onStartSync={handleSyncAll} />
               
               <QuickActions
-                onTestBatch={handleTestPricing}
+                onTestBatch={handleTestBatch}
                 onSyncAll={handleSyncAll}
-                onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
-                onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
-                onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
-                onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+                onSyncPokemonEN={handleSyncPokemonEN}
+                onSyncPokemonJP={handleSyncPokemonJP}
+                onSyncMTG={handleSyncMTG}
+                onSyncYugioh={handleSyncYugioh}
                 onSyncSealed={handleSyncSealed}
               />
 
@@ -422,12 +337,12 @@ function PricingMonitorPageContent() {
       {/* Sync Floating Action Button */}
       <SyncFloatingActionButton
         onSyncAll={handleSyncAll}
-        onSyncMTG={() => handleSyncGame('mtg', 'Magic: The Gathering')}
-        onSyncPokemonEN={() => handleSyncGame('pokemon', 'Pokémon EN')}
-        onSyncPokemonJP={() => handleSyncGame('pokemon-japan', 'Pokémon JP')}
-        onSyncYugioh={() => handleSyncGame('yugioh', 'Yu-Gi-Oh')}
+        onSyncMTG={handleSyncMTG}
+        onSyncPokemonEN={handleSyncPokemonEN}
+        onSyncPokemonJP={handleSyncPokemonJP}
+        onSyncYugioh={handleSyncYugioh}
         onSyncSealed={handleSyncSealed}
-        onTestBatch={handleTestPricing}
+        onTestBatch={handleTestBatch}
         className="transition-all duration-200 hover:scale-105"
       />
 
@@ -443,7 +358,7 @@ function PricingMonitorPageContent() {
       <KeyboardShortcuts
         onTabChange={setActiveTab}
         onRefresh={handleRefreshAll}
-        onTest={handleTestPricing}
+        onTest={handleTestBatch}
         onSearch={handleSearch}
         onCommandPalette={() => setCommandPaletteOpen(true)}
       />
