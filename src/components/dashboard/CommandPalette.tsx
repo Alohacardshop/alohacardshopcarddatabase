@@ -136,6 +136,15 @@ export function CommandPalette({ open, onClose, onTabChange, onAction }: Command
       keywords: ["health", "check", "status", "diagnostics"]
     },
     {
+      id: "action-sync-manager",
+      title: "Open Sync Manager",
+      description: "Comprehensive game sync management",
+      icon: <Settings className="w-4 h-4" />,
+      category: "Actions",
+      action: () => onAction?.("sync-manager"),
+      keywords: ["sync", "manager", "games", "comprehensive", "bulk"]
+    },
+    {
       id: "action-test-pricing",
       title: "Test Pricing Job",
       description: "Run a small test batch",

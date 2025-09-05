@@ -11,6 +11,7 @@ interface StickyHeaderProps {
   lastUpdated?: Date;
   nextSync?: Date;
   className?: string;
+  showSyncManager?: boolean;
 }
 
 export function StickyHeader({
@@ -18,7 +19,8 @@ export function StickyHeader({
   onTabChange,
   lastUpdated,
   nextSync,
-  className
+  className,
+  showSyncManager = false
 }: StickyHeaderProps) {
   const [timeUntilSync, setTimeUntilSync] = useState("");
   const [timeSinceUpdate, setTimeSinceUpdate] = useState("");
@@ -68,13 +70,14 @@ export function StickyHeader({
     { id: "analytics", label: "Analytics", shortcut: "2" },
     { id: "jobs", label: "Jobs", shortcut: "3" },
     { id: "sealed", label: "Sealed Products", shortcut: "4" },
-    { id: "system", label: "System Health", shortcut: "5" }
+    { id: "system", label: "System Health", shortcut: "5" },
+    ...(showSyncManager ? [{ id: "sync-manager", label: "Sync Manager", shortcut: "6" }] : [])
   ];
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle number key shortcuts (1-5)
-      if (e.key >= "1" && e.key <= "5" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Handle number key shortcuts (1-6)
+      if (e.key >= "1" && e.key <= "6" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const index = parseInt(e.key) - 1;
         if (tabs[index]) {
           onTabChange(tabs[index].id);
@@ -95,7 +98,12 @@ export function StickyHeader({
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between p-4 gap-4">
         {/* Navigation tabs */}
         <Tabs value={activeTab} onValueChange={onTabChange} className="w-full lg:w-auto">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-5 lg:w-auto h-auto p-1">
+          <TabsList className={cn(
+            "grid w-full h-auto p-1",
+            showSyncManager 
+              ? "grid-cols-3 lg:grid-cols-6 lg:w-auto" 
+              : "grid-cols-3 lg:grid-cols-5 lg:w-auto"
+          )}>
             {tabs.map((tab) => (
               <TabsTrigger 
                 key={tab.id} 

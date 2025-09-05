@@ -21,6 +21,7 @@ import { AdvancedMetrics } from "@/components/dashboard/AdvancedMetrics";
 import { QuickActionBar } from "@/components/dashboard/QuickActionBar";
 import { SyncFloatingActionButton } from "@/components/dashboard/SyncFloatingActionButton";
 import { DeepSyncPanel } from "@/components/dashboard/DeepSyncPanel";
+import { GameSyncManager } from "@/components/admin/GameSyncManager";
 import { supabase } from "@/integrations/supabase/client";
 
 function PricingMonitorPageContent() {
@@ -281,8 +282,11 @@ function PricingMonitorPageContent() {
       case 'health-check':
         handleHealthCheck();
         break;
-      case 'test-pricing':
+        case 'test-pricing':
         handleTestPricing();
+        break;
+      case 'sync-manager':
+        setActiveTab('sync-manager');
         break;
     }
   };
@@ -352,6 +356,7 @@ function PricingMonitorPageContent() {
             onTabChange={setActiveTab}
             lastUpdated={lastUpdated || undefined}
             nextSync={nextSync || undefined}
+            showSyncManager={true}
           />
 
           {/* Tab Contents */}
@@ -405,6 +410,10 @@ function PricingMonitorPageContent() {
 
             <TabsContent value="system" className="m-0">
               <SystemHealthTab />
+            </TabsContent>
+
+            <TabsContent value="sync-manager" className="m-0">
+              <GameSyncManager />
             </TabsContent>
           </div>
         </Tabs>
